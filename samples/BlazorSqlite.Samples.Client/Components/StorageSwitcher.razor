@@ -1,0 +1,105 @@
+@inject BrowserDatabase Database
+@implements IAsyncDisposable
+
+<div class="storage-bar">
+    <div class="storage-now">
+        <span class="storage-dot" data-name="@CurrentName"></span>
+        <div>
+            <p class="storage-kicker">Client database</p>
+            <p class="storage-name">@SampleStorage.Title(CurrentName)</p>
+        </div>
+    </div>
+    <label class="storage-pick">
+        <span>Backend</span>
+        <select @bind="_target" disabled="@_busy">
+            @foreach (var provider in Database.Providers)
+            {
+                <option value="@provider.Name">@SampleStorage.Title(provider.Name)</option>
+            }
+        </select>
+    </label>
+    <div class="storage-actions">
+        <button type="button" disabled="@(_busy || SameTarget)" @onclick="() => SwitchAsync(StorageSwitchMode.Migrate)">
+            Move data
+        </button>
+        <button type="button" class="secondary" disabled="@(_busy || SameTarget)" @onclick="() => SwitchAsync(StorageSwitchMode.Fresh)">
+            Empty on this backend
+        </button>
+    </div>
+    @if (_message is not null)
+    {
+        <p class="@(_failed ? "error" : "storage-ok")">@_message</p>
+    }
+</div>
+
+@code {
+    private string _target = "opfs";
+    private bool _busy;
+    private bool _failed;
+    private string? _message;
+
+    private string CurrentName => Database.Resolution?.Provider.Name ?? _target;
+
+    private bool SameTarget =>
+        string.Equals(CurrentName, _target, StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Database.AfterSessionReset += OnResetAsync;
+        try
+        {
+            await Database.EnsureSessionAsync();
+            _target = CurrentName;
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _failed = true;
+            _message = ex.Message;
+        }
+    }
+
+    private async Task OnResetAsync()
+    {
+        try
+        {
+            await Database.EnsureSessionAsync();
+            _target = CurrentName;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+        }
+    }
+
+    private async Task SwitchAsync(StorageSwitchMode mode)
+    {
+        _busy = true;
+        _failed = false;
+        _message = null;
+        try
+        {
+            await Database.SwitchStorageAsync(_target, mode);
+            await Database.EnsureSessionAsync();
+            var verb = mode is StorageSwitchMode.Migrate ? "Moved onto" : "Opened empty on";
+            _message = $"{verb} {SampleStorage.Title(CurrentName)}.";
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _failed = true;
+            _message = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Database.AfterSessionReset -= OnResetAsync;
+        await Task.CompletedTask;
+    }
+}

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <Description>
+      OPFS storage for BlazorSqlite, using wa-sqlite's OPFSCoopSyncVFS. Persistent, multi-connection,
+      worker-only, no COOP/COEP.
+    </Description>
+    <AddRazorSupportForMvc>false</AddRazorSupportForMvc>
+  </PropertyGroup>
+
+  <Import Project="vfs\wa-sqlite.lock.props" />
+  <Import Project="vfs\FetchOpfsVfs.targets" />
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.JSInterop" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BlazorSqlite.Storage.Abstractions\BlazorSqlite.Storage.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

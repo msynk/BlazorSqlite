@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\BlazorSqlite.EntityFrameworkCore\BlazorSqlite.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\src\BlazorSqlite.Interop\BlazorSqlite.Interop.csproj" />
+    <ProjectReference Include="..\..\src\BlazorSqlite.Storage.InMemory\BlazorSqlite.Storage.InMemory.csproj" />
+    <ProjectReference Include="..\..\src\BlazorSqlite.Testing\BlazorSqlite.Testing.csproj" />
+    <ProjectReference Include="..\..\samples\BlazorSqlite.Samples.Data\BlazorSqlite.Samples.Data.csproj" />
+  </ItemGroup>
+
+</Project>

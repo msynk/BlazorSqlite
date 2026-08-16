@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);EF1001</NoWarn>
+    <Description>
+      EF Core integration for BlazorSqlite: UseBlazorSqlite() on the stock SQLite provider,
+      replacing the two services that assume synchronous I/O.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Core, not the full Sqlite package: WASM must not pull in a native e_sqlite3. Desktop tests
+         get a real engine through BlazorSqlite.Testing → Microsoft.Data.Sqlite. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BlazorSqlite.Data\BlazorSqlite.Data.csproj" />
+  </ItemGroup>
+
+</Project>

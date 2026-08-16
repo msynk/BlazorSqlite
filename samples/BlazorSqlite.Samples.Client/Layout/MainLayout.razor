@@ -1,0 +1,41 @@
+@inherits LayoutComponentBase
+@using BlazorSqlite.Samples.Client.Components
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+
+<div class="shell">
+    <header class="top">
+        <div>
+            <p class="eyebrow">BlazorSqlite</p>
+            <h1>EF Core + SQLite, in this tab</h1>
+        </div>
+        <nav>
+            <NavLink href="" Match="NavLinkMatch.All">Overview</NavLink>
+            <NavLink href="catalog">Catalog</NavLink>
+            <NavLink href="customers">Customers</NavLink>
+            <NavLink href="orders">Orders</NavLink>
+            <NavLink href="storage">Storage</NavLink>
+            <NavLink href="queries">SQL</NavLink>
+            <NavLink href="admin">Admin</NavLink>
+            <NavLink href="limits">Limits</NavLink>
+        </nav>
+    </header>
+    <StorageSwitcher />
+    <main>
+        <ErrorBoundary @ref="_boundary">
+            <ChildContent>
+                @Body
+            </ChildContent>
+            <ErrorContent Context="exception">
+                <UnhandledExceptionView Exception="exception" />
+            </ErrorContent>
+        </ErrorBoundary>
+    </main>
+</div>
+
+@code {
+    private ErrorBoundary? _boundary;
+
+    protected override void OnParametersSet()
+        => _boundary?.Recover();
+}

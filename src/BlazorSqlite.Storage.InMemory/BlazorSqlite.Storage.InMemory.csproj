@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Non-persistent in-memory storage for BlazorSqlite, and the reference implementation of the storage provider contract.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BlazorSqlite.Storage.Abstractions\BlazorSqlite.Storage.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

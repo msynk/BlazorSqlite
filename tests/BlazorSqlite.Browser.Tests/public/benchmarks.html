@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>BlazorSqlite benchmarks</title>
+</head>
+<body>
+  <h1>BlazorSqlite benchmarks</h1>
+  <p>Manual. Open the console, then:</p>
+  <pre>await run('opfs')
+await run('indexeddb')
+await run('cache')</pre>
+  <script type="module">
+    import { open } from '/_content/BlazorSqlite.Js/blazor-sqlite-host.js';
+
+    const backends = {
+      opfs: {
+        requiredBuild: 'synchronous',
+        vfs: { moduleUrl: '/_content/BlazorSqlite.Storage.Opfs/opfs-vfs.js', registerExport: 'register' },
+      },
+      indexeddb: {
+        requiredBuild: 'asyncCapable',
+        vfs: { moduleUrl: '/_content/BlazorSqlite.Storage.IndexedDb/idb-vfs.js', registerExport: 'register' },
+      },
+      cache: {
+        requiredBuild: 'asyncCapable',
+        vfs: { moduleUrl: '/_content/BlazorSqlite.Storage.CacheStorage/cache-register.js', registerExport: 'register' },
+      },
+    };
+
+    globalThis.run = async function run(backend) {
+      const options = backends[backend];
+      const name = `bench-${backend}-${Date.now()}`;
+      const t0 = performance.now();
+      const host = await open({ databaseName: name, ...options });
+      const opened = performance.now() - t0;
+      await host.execute([{ commandText: 'CREATE TABLE t (id INTEGER PRIMARY KEY, n INTEGER)', resultKind: 'nonQuery' }]);
+      const t1 = performance.now();
+      await host.execute([{ commandText: 'INSERT INTO t (n) VALUES (1),(2),(3),(4),(5),(6),(7),(8),(9),(10)', resultKind: 'nonQuery' }]);
+      const inserted = performance.now() - t1;
+      const t2 = performance.now();
+      await host.execute([{ commandText: 'SELECT n FROM t WHERE id = 5', resultKind: 'scalar' }]);
+      const selected = performance.now() - t2;
+      host.dispose();
+      const row = { backend, openedMs: opened.toFixed(1), insert10Ms: inserted.toFixed(1), selectMs: selected.toFixed(1) };
+      console.table([row]);
+      return row;
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+@inject BrowserDatabase Database
+@implements IAsyncDisposable
+
+@ChildContent
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public EventCallback OnReady { get; set; }
+
+    [Parameter]
+    public EventCallback OnTearDown { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Database.BeforeSessionReset += TearDownAsync;
+        Database.AfterSessionReset += ReadyAsync;
+        await ReadyAsync();
+    }
+
+    private async Task TearDownAsync()
+    {
+        if (OnTearDown.HasDelegate)
+        {
+            await OnTearDown.InvokeAsync();
+        }
+    }
+
+    private async Task ReadyAsync()
+    {
+        if (OnReady.HasDelegate)
+        {
+            await OnReady.InvokeAsync();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Database.BeforeSessionReset -= TearDownAsync;
+        Database.AfterSessionReset -= ReadyAsync;
+        await TearDownAsync();
+    }
+}

@@ -1,0 +1,154 @@
+@page "/"
+@inject BrowserDatabase Database
+
+<SessionLifecycle OnReady="LoadAsync" OnTearDown="UnloadAsync" />
+
+<p class="lead">
+    This tab is a real SQLite database. The same EF Core model — decimals, GUIDs, dates,
+    enums, live queries — runs through BlazorSqlite on whatever backend you pick above.
+    Nothing here talks to the server except the WASM download.
+</p>
+
+@if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+
+<div class="grid">
+    <section class="card kpi">
+        <strong>@_products</strong>
+        <span>Products in catalog</span>
+    </section>
+    <section class="card kpi">
+        <strong>@_customers</strong>
+        <span>Customers</span>
+    </section>
+    <section class="card kpi">
+        <strong>@_openOrders</strong>
+        <span>Open orders (not shipped / cancelled)</span>
+    </section>
+    <section class="card kpi">
+        <strong>@SampleStorage.Title(_backend ?? "…")</strong>
+        <span>@_persist</span>
+    </section>
+</div>
+
+<div class="grid" style="margin-top:1rem">
+    <section class="card">
+        <h2>Live catalog</h2>
+        <p>
+            <code>AsLiveQuery()</code> on <code>Products</code>. Add a row on
+            <a href="catalog">Catalog</a> — this list re-runs, including from another tab.
+        </p>
+        @if (_liveRows.Count == 0)
+        {
+            <p>No products yet.</p>
+        }
+        else
+        {
+            <table>
+                <thead>
+                <tr><th>SKU</th><th>Name</th><th>Price</th><th>Active</th></tr>
+                </thead>
+                <tbody>
+                @foreach (var product in _liveRows)
+                {
+                    <tr>
+                        <td class="mono">@product.Sku</td>
+                        <td>@product.Name</td>
+                        <td>@SampleFormat.Money(product.Price)</td>
+                        <td>@(product.IsActive ? "yes" : "no")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    </section>
+    <section class="card">
+        <h2>CLR types stored in SQLite</h2>
+        <p>The ADO.NET binder owns the TEXT/INTEGER/REAL choice so the worker never has to guess.</p>
+        <table class="type-table">
+            <thead><tr><th>CLR</th><th>SQLite</th><th>Where</th></tr></thead>
+            <tbody>
+            <tr><td><code>decimal</code></td><td>TEXT + <code>ef_*</code></td><td>Price, credit limit</td></tr>
+            <tr><td><code>DateTime</code></td><td>TEXT ISO</td><td>CreatedUtc</td></tr>
+            <tr><td><code>DateTimeOffset</code></td><td>TEXT + offset</td><td>OrderedAt</td></tr>
+            <tr><td><code>DateOnly</code></td><td>TEXT date</td><td>Date of birth, ship-by</td></tr>
+            <tr><td><code>TimeSpan</code></td><td>TEXT <code>c</code></td><td>Lead time</td></tr>
+            <tr><td><code>Guid</code></td><td>TEXT</td><td>PublicId</td></tr>
+            <tr><td><code>bool</code></td><td>INTEGER 0/1</td><td>IsActive, IsVip</td></tr>
+            <tr><td><code>enum</code></td><td>TEXT</td><td>Order status</td></tr>
+            </tbody>
+        </table>
+    </section>
+</div>
+
+<section class="card" style="margin-top:1rem">
+    <h2>Where to go next</h2>
+    <ul class="plain">
+        <li><a href="catalog">Catalog</a> — categories and products, including discontinued <code>DateOnly?</code> rows.</li>
+        <li><a href="customers">Customers</a> — GUIDs, VIP flag, decimal credit limits.</li>
+        <li><a href="orders">Orders</a> — master-detail lines, enum status, <code>DateTimeOffset</code>.</li>
+        <li><a href="storage">Storage</a> — probes, capabilities, persistent-storage permission.</li>
+        <li><a href="queries">SQL</a> — generated SQL, <code>ef_compare</code>, <code>REGEXP</code>.</li>
+    </ul>
+</section>
+
+@code {
+    private AppDbContext? _context;
+    private ILiveQuery<IReadOnlyList<Product>>? _live;
+    private IReadOnlyList<Product> _liveRows = [];
+    private int _products;
+    private int _customers;
+    private int _openOrders;
+    private string? _backend;
+    private string _persist = "opening…";
+    private string? _error;
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        try
+        {
+            _context = await Database.OpenContextAsync();
+            _backend = Database.Resolution?.Provider.Name;
+            var persistent = Database.Resolution?.Provider.Capabilities.IsPersistent == true;
+            _persist = persistent ? "Persists across reload" : "Gone when this tab closes";
+            _products = await _context.Products.CountAsync();
+            _customers = await _context.Customers.CountAsync();
+            _openOrders = await _context.Orders.CountAsync(o =>
+                o.Status != OrderStatus.Shipped && o.Status != OrderStatus.Cancelled);
+
+            _live = _context.Products.AsNoTracking().OrderBy(p => p.Sku).Take(8).AsLiveQuery();
+            _live.Changed += OnChanged;
+            _liveRows = await _live.RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _error = ex.Message;
+        }
+    }
+
+    private async Task UnloadAsync()
+    {
+        if (_live is not null)
+        {
+            _live.Changed -= OnChanged;
+            await _live.DisposeAsync();
+            _live = null;
+        }
+
+        if (_context is not null)
+        {
+            await _context.DisposeAsync();
+            _context = null;
+        }
+    }
+
+    private void OnChanged(object? sender, IReadOnlyList<Product> rows)
+    {
+        _liveRows = rows;
+        _ = InvokeAsync(StateHasChanged);
+    }
+}

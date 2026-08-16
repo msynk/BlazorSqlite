@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <Description>The browser half of BlazorSqlite: the worker host, the SQLite engine builds, and the JavaScript API the storage providers' VFSes extend. Served as static web assets under _content/BlazorSqlite.Js.</Description>
+
+    <!-- Static assets only; no Razor components, so no need to scan for them. -->
+    <AddRazorSupportForMvc>false</AddRazorSupportForMvc>
+  </PropertyGroup>
+
+  <Import Project="engine\wa-sqlite.lock.props" />
+  <Import Project="engine\FetchEngine.targets" />
+
+</Project>

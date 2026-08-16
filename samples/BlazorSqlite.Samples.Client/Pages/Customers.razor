@@ -1,0 +1,226 @@
+@page "/customers"
+@inject BrowserDatabase Database
+
+<SessionLifecycle OnReady="LoadAsync" OnTearDown="UnloadAsync" />
+
+<p class="lead">
+    Customers exercise <code>Guid</code>, <code>DateOnly</code>, <code>bool</code>, and
+    <code>decimal</code> credit limits — the types that used to die on the WASM transport.
+</p>
+
+@if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+
+<div class="split">
+    <section class="card">
+        <h2>Directory</h2>
+        <div class="toolbar">
+            <input type="search" placeholder="Filter name or email" @bind="_filter" @bind:event="oninput" />
+            <span class="grow"></span>
+            <button type="button" @onclick="NewCustomer" disabled="@(_busy || _context is null)">New customer</button>
+        </div>
+        <table>
+            <thead>
+            <tr><th>Name</th><th>Email</th><th>Born</th><th>Credit</th><th>VIP</th><th></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var customer in Visible)
+            {
+                <tr class="clickable @(customer.Id == _edit?.Id ? "selected" : null)" @onclick="() => Edit(customer)">
+                    <td>@customer.DisplayName</td>
+                    <td>@customer.Email</td>
+                    <td>@SampleFormat.Day(customer.DateOfBirth)</td>
+                    <td>@SampleFormat.Money(customer.CreditLimit)</td>
+                    <td>@(customer.IsVip ? "yes" : "no")</td>
+                    <td class="actions">
+                        <button type="button" class="danger" @onclick="() => DeleteAsync(customer)" @onclick:stopPropagation="true">Delete</button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </section>
+    <section class="card">
+        <h2>@(_edit?.Id == 0 ? "New customer" : "Edit customer")</h2>
+        @if (_edit is null)
+        {
+            <p>Select a row, or create one.</p>
+        }
+        else
+        {
+            <form class="stack-form" @onsubmit="SaveAsync" @onsubmit:preventDefault="true">
+                <label>Name <input @bind="_edit.DisplayName" required /></label>
+                <label>Email <input type="email" @bind="_edit.Email" required /></label>
+                <label>Date of birth <input type="date" @bind="_edit.DateOfBirth" /></label>
+                <label>Credit limit <input type="number" step="0.01" @bind="_edit.CreditLimit" /></label>
+                <label><input type="checkbox" @bind="_edit.IsVip" /> VIP</label>
+                <label>Notes <textarea @bind="_edit.Notes"></textarea></label>
+                <p class="mono">PublicId @_edit.PublicId</p>
+                <div class="row">
+                    <button type="submit" disabled="@_busy">Save</button>
+                    <button type="button" class="secondary" @onclick="() => _edit = null">Cancel</button>
+                </div>
+            </form>
+        }
+    </section>
+</div>
+
+@code {
+    private AppDbContext? _context;
+    private List<Customer> _rows = [];
+    private Customer? _edit;
+    private string _filter = string.Empty;
+    private bool _busy;
+    private string? _error;
+
+    private IEnumerable<Customer> Visible
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_filter))
+            {
+                return _rows;
+            }
+
+            var term = _filter.Trim();
+            return _rows.Where(c =>
+                c.DisplayName.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || c.Email.Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        try
+        {
+            _context = await Database.OpenContextAsync();
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _error = ex.Message;
+        }
+    }
+
+    private async Task UnloadAsync()
+    {
+        _edit = null;
+        if (_context is not null)
+        {
+            await _context.DisposeAsync();
+            _context = null;
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (_context is null)
+        {
+            return;
+        }
+
+        _rows = await _context.Customers.AsNoTracking().OrderBy(c => c.DisplayName).ToListAsync();
+    }
+
+    private void NewCustomer()
+    {
+        _edit = new Customer
+        {
+            DisplayName = string.Empty,
+            Email = string.Empty,
+            DateOfBirth = new DateOnly(1980, 1, 1),
+            CreditLimit = 1_000m,
+        };
+    }
+
+    private void Edit(Customer customer)
+    {
+        _edit = new Customer
+        {
+            Id = customer.Id,
+            PublicId = customer.PublicId,
+            DisplayName = customer.DisplayName,
+            Email = customer.Email,
+            DateOfBirth = customer.DateOfBirth,
+            IsVip = customer.IsVip,
+            CreditLimit = customer.CreditLimit,
+            Notes = customer.Notes,
+            CreatedUtc = customer.CreatedUtc,
+        };
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_context is null || _edit is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            if (_edit.Id == 0)
+            {
+                _context.Customers.Add(_edit);
+            }
+            else
+            {
+                _context.Customers.Update(_edit);
+            }
+
+            await _context.SaveChangesAsync();
+            _context.ChangeTracker.Clear();
+            _edit = null;
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _error = ex.Message;
+            _context.ChangeTracker.Clear();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteAsync(Customer customer)
+    {
+        if (_context is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            var tracked = await _context.Customers.FirstAsync(c => c.Id == customer.Id);
+            _context.Customers.Remove(tracked);
+            await _context.SaveChangesAsync();
+            _context.ChangeTracker.Clear();
+            if (_edit?.Id == customer.Id)
+            {
+                _edit = null;
+            }
+
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _error = ex.Message;
+            _context.ChangeTracker.Clear();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

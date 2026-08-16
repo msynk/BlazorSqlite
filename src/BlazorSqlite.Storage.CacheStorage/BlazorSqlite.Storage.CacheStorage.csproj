@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <Description>
+      Cache Storage for BlazorSqlite. Block-based, journal-committed, and the besql migration path.
+    </Description>
+    <AddRazorSupportForMvc>false</AddRazorSupportForMvc>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.JSInterop" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BlazorSqlite.Storage.Abstractions\BlazorSqlite.Storage.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

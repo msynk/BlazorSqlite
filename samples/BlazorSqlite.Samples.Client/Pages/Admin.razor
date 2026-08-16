@@ -1,0 +1,240 @@
+@page "/admin"
+@inject BrowserDatabase Database
+@inject IJSRuntime Js
+
+<SessionLifecycle OnReady="LoadAsync" OnTearDown="NoopAsync" />
+
+<p class="lead">
+    <code>IBlazorSqliteStorageAdmin</code> operates on databases as files: list, export, import,
+    delete. Cross-provider migration uses the same surface (copy bytes, then
+    <code>PRAGMA integrity_check</code>). These calls do not go through EF.
+</p>
+
+@if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+@if (_info is not null)
+{
+    <p class="note">@_info</p>
+}
+
+<section class="card">
+    <h2>What each backend holds</h2>
+    <p>Names come from the provider's admin API. Related <code>-journal</code> files are not databases.</p>
+    <button type="button" class="secondary" @onclick="ListAllAsync" disabled="@_busy">Refresh lists</button>
+    @foreach (var group in _lists)
+    {
+        <h3><code>@group.Name</code></h3>
+        @if (group.Names.Count == 0)
+        {
+            <p>Empty.</p>
+        }
+        else
+        {
+            <ul class="plain">
+                @foreach (var name in group.Names)
+                {
+                    <li>@name</li>
+                }
+            </ul>
+        }
+    }
+</section>
+
+<section class="card">
+    <h2>Export</h2>
+    <p>
+        Downloads a SQLite image of <code>@BrowserDatabase.DatabaseName</code> from the backend
+        that currently owns it. On OPFS this is a real file read; on IndexedDB / Cache Storage it
+        is assembled from pages.
+    </p>
+    <button type="button" @onclick="ExportAsync" disabled="@_busy">Download app.db</button>
+</section>
+
+<section class="card">
+    <h2>Import</h2>
+    <p>
+        Replaces the named database on the selected backend, then records the sticky binding so
+        the next open does not create an empty file on a different provider. The open worker is
+        closed first so it cannot keep writing the old image.
+    </p>
+    <div class="row">
+        <select @bind="_importProvider">
+            @foreach (var provider in Database.Providers)
+            {
+                <option value="@provider.Name">@provider.Name</option>
+            }
+        </select>
+        <InputFile OnChange="OnFile" accept=".db,.sqlite,application/octet-stream" />
+        <button type="button" @onclick="ImportAsync" disabled="@(_busy || _importBytes is null)">Import and reopen</button>
+    </div>
+</section>
+
+<section class="card">
+    <h2>Delete</h2>
+    <p>
+        Removes <code>@BrowserDatabase.DatabaseName</code> from the current backend and forgets
+        the sticky binding, so the next open is free to pick the preferred provider again.
+        The session is closed first.
+    </p>
+    <button type="button" @onclick="DeleteAsync" disabled="@_busy">Delete app.db and reopen empty</button>
+</section>
+
+@code {
+    private readonly List<(string Name, IReadOnlyList<string> Names)> _lists = [];
+    private string? _error;
+    private string? _info;
+    private bool _busy;
+    private string _importProvider = "opfs";
+    private byte[]? _importBytes;
+
+    private static Task NoopAsync() => Task.CompletedTask;
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            await Database.EnsureSessionAsync();
+            _importProvider = Database.Resolution?.Provider.Name ?? "opfs";
+            await ListAllAsync();
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _error = ex.Message;
+        }
+    }
+
+    private async Task ListAllAsync()
+    {
+        _busy = true;
+        _error = null;
+        _lists.Clear();
+        try
+        {
+            foreach (var provider in Database.Providers)
+            {
+                var names = await provider.Admin.ListAsync();
+                _lists.Add((provider.Name, names));
+            }
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ExportAsync()
+    {
+        _busy = true;
+        _error = null;
+        _info = null;
+        try
+        {
+            var session = await Database.EnsureSessionAsync();
+            var bytes = await session.Resolution.Provider.Admin.ExportAsync(BrowserDatabase.DatabaseName);
+            await Js.InvokeVoidAsync("blazorSqliteSample.download", "app.db", bytes);
+            _info = $"Exported {SampleFormat.Bytes(bytes.LongLength)} from {session.Resolution.Provider.Name}.";
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task OnFile(InputFileChangeEventArgs args)
+    {
+        _error = null;
+        try
+        {
+            await using var stream = args.File.OpenReadStream(maxAllowedSize: 32 * 1024 * 1024);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            _importBytes = memory.ToArray();
+            _info = $"Ready to import {args.File.Name} ({SampleFormat.Bytes(_importBytes.LongLength)}).";
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _error = ex.Message;
+        }
+    }
+
+    private async Task ImportAsync()
+    {
+        if (_importBytes is null)
+        {
+            return;
+        }
+
+        var provider = Database.Providers.FirstOrDefault(p =>
+            string.Equals(p.Name, _importProvider, StringComparison.OrdinalIgnoreCase));
+        if (provider is null)
+        {
+            _error = $"No registered provider named {_importProvider}.";
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        _info = null;
+        try
+        {
+            await Database.CloseSessionAsync();
+            await provider.Admin.ImportAsync(BrowserDatabase.DatabaseName, _importBytes);
+            await Database.Bindings.SetProviderNameAsync(BrowserDatabase.DatabaseName, provider.Name);
+            await Database.OpenContextAsync();
+            await Database.NotifySessionChangedAsync();
+            _info = $"Imported into {provider.Name} and reopened. Catalog and orders will refresh.";
+            await ListAllAsync();
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        _busy = true;
+        _error = null;
+        _info = null;
+        try
+        {
+            var provider = Database.Resolution?.Provider
+                ?? throw new InvalidOperationException("Open a session before deleting.");
+            await Database.CloseSessionAsync();
+            await provider.Admin.DeleteAsync(BrowserDatabase.DatabaseName);
+            await Database.Bindings.RemoveAsync(BrowserDatabase.DatabaseName);
+            await Database.OpenContextAsync();
+            await Database.NotifySessionChangedAsync();
+            _info = "Deleted and reopened. Migrations ran again; the workshop catalog was reseeded if empty.";
+            await ListAllAsync();
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

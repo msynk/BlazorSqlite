@@ -1,0 +1,155 @@
+@page "/limits"
+@inject BrowserDatabase Database
+
+<SessionLifecycle OnReady="LoadAsync" OnTearDown="NoopAsync" />
+
+<p class="lead">
+    The default tier is asynchronous: the engine lives in a worker, and the Blazor main thread
+    cannot block on it. Some SQLite features also cannot be honoured on the web, so they fail
+    with a typed message instead of half-working.
+</p>
+
+@if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+
+<section class="card">
+    <h2>Synchronous EF / ADO.NET</h2>
+    <p>
+        <code>SaveChanges()</code>, <code>ToList()</code>, and <code>DbConnection.Open()</code>
+        throw <code>BlazorSqliteSynchronousApiNotSupportedException</code> and name the async
+        overload. The opt-in Arch 2 package that would lift this (COOP/COEP +
+        <code>ISQLite3Provider</code>) slipped post-1.0.
+    </p>
+    <button type="button" @onclick="TrySyncSaveAsync" disabled="@_busy">Call SaveChanges()</button>
+    @if (_syncResult is not null)
+    {
+        <h3>Result</h3>
+        <pre>@_syncResult</pre>
+    }
+</section>
+
+<section class="card">
+    <h2>WAL</h2>
+    <p>
+        No web VFS implements WAL: WASM lacks the shared-memory primitives it needs, and the
+        official SQLite WASM build cannot even <em>read</em> a WAL-mode file. Journal mode is
+        DELETE or TRUNCATE. Concurrent reads, where a backend offers them, are a VFS capability.
+    </p>
+    <button type="button" class="secondary" @onclick='() => RunSqlAsync("PRAGMA journal_mode=WAL")' disabled="@_busy">
+        PRAGMA journal_mode=WAL
+    </button>
+</section>
+
+<section class="card">
+    <h2>ATTACH</h2>
+    <p>
+        Gated by <code>SupportsMultiDatabaseTransactions</code>. OPFS CoopSync cannot run a
+        transaction that spans two files; IndexedDB can. The guard is generic — it reads the
+        selected backend's capabilities, not the provider name.
+    </p>
+    <p>
+        This session:
+        <strong>@SampleFormat.YesNo(_supportsAttach)</strong> for multi-database transactions.
+    </p>
+    <button type="button" class="secondary" @onclick="TryAttachAsync" disabled="@_busy">
+        ATTACH DATABASE 'other.db' AS other
+    </button>
+</section>
+
+<section class="card">
+    <h2>PRAGMA page_size</h2>
+    <p>
+        Block-oriented backends pin the page size to their block size (IndexedDB batch-atomic
+        is the usual case). Changing it would look like success and then corrupt the image.
+    </p>
+    <p>
+        This session can change page size:
+        <strong>@SampleFormat.YesNo(_canChangePageSize)</strong>.
+    </p>
+    <button type="button" class="secondary" @onclick='() => RunSqlAsync("PRAGMA page_size=512")' disabled="@_busy">
+        PRAGMA page_size=512
+    </button>
+</section>
+
+@if (_sqlResult is not null)
+{
+    <section class="card">
+        <h2>Last SQL result</h2>
+        <pre>@_sqlResult</pre>
+    </section>
+}
+
+@code {
+    private bool _supportsAttach = true;
+    private bool _canChangePageSize = true;
+    private string? _error;
+    private string? _syncResult;
+    private string? _sqlResult;
+    private bool _busy;
+
+    private static Task NoopAsync() => Task.CompletedTask;
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var session = await Database.EnsureSessionAsync();
+            var limits = session.Connection.RuntimeLimits;
+            _supportsAttach = limits.SupportsMultiDatabaseTransactions;
+            _canChangePageSize = limits.CanChangePageSize;
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _error = ex.Message;
+        }
+    }
+
+    private async Task TrySyncSaveAsync()
+    {
+        _busy = true;
+        _error = null;
+        _syncResult = null;
+        try
+        {
+            await using var context = await Database.OpenContextAsync();
+            context.SaveChanges();
+            _syncResult = "Unexpected: SaveChanges() succeeded.";
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _syncResult = $"{ex.GetType().Name}\n\n{ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task TryAttachAsync()
+        => RunSqlAsync("ATTACH DATABASE 'other.db' AS other");
+
+    private async Task RunSqlAsync(string sql)
+    {
+        _busy = true;
+        _error = null;
+        _sqlResult = null;
+        try
+        {
+            await Database.ExecuteNonQueryAsync(sql);
+            _sqlResult = $"{sql}\n\nCompleted without error on this backend.";
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _sqlResult = $"{sql}\n\n{ex.GetType().Name}\n\n{ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

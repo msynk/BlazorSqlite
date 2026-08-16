@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>BlazorSqlite browser test host</title>
+</head>
+<body>
+  <!--
+    The page is intentionally empty. Tests drive the library through page.evaluate() against the module
+    imported below, so the host stays a transport for test code rather than becoming a second
+    implementation that has to be kept in step with the real one.
+  -->
+  <script type="module">
+    import * as host from '/_content/BlazorSqlite.Js/blazor-sqlite-host.js';
+    import * as engine from '/_content/BlazorSqlite.Js/blazor-sqlite-engine.js';
+
+    globalThis.BlazorSqlite = { host, engine };
+    globalThis.BlazorSqliteReady = true;
+  </script>
+</body>
+</html>

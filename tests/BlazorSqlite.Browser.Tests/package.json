@@ -1,0 +1,14 @@
+{
+  "name": "blazor-sqlite-browser-tests",
+  "private": true,
+  "type": "module",
+  "description": "Browser tests for the BlazorSqlite worker host, engine loader, and storage VFSes. These are the only tests that can prove the JavaScript half works, so they run against real browser engines rather than a DOM shim.",
+  "scripts": {
+    "test": "playwright test",
+    "test:all": "playwright test --project=chromium --project=firefox --project=webkit",
+    "install-browsers": "playwright install"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0"
+  }
+}

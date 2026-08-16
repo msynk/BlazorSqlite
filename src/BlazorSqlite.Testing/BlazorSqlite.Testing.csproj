@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>In-process ISqliteTransport backed by Microsoft.Data.Sqlite, for unit-testing BlazorSqlite without a browser.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BlazorSqlite.Data\BlazorSqlite.Data.csproj" />
+  </ItemGroup>
+
+</Project>

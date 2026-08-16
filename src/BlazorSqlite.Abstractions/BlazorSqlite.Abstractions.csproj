@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Options, typed errors, and diagnostics contracts shared across BlazorSqlite.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BlazorSqlite.Storage.Abstractions\BlazorSqlite.Storage.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

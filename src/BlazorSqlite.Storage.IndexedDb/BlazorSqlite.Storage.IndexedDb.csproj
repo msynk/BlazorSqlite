@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <Description>
+      IndexedDB storage for BlazorSqlite, using wa-sqlite's IDBBatchAtomicVFS. Persistent,
+      async-capable (JSPI or Asyncify), works where OPFS does not.
+    </Description>
+    <AddRazorSupportForMvc>false</AddRazorSupportForMvc>
+  </PropertyGroup>
+
+  <Import Project="vfs\wa-sqlite.lock.props" />
+  <Import Project="vfs\FetchIndexedDbVfs.targets" />
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.JSInterop" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BlazorSqlite.Storage.Abstractions\BlazorSqlite.Storage.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,229 @@
+@page "/storage"
+@inject BrowserDatabase Database
+@inject IJSRuntime Js
+
+<SessionLifecycle OnReady="LoadAsync" OnTearDown="NoopAsync" />
+
+<p class="lead">
+    The bar above this page is the real switch: <strong>Move data</strong> copies the SQLite image
+    with <code>IBlazorSqliteStorageAdmin</code> (export → import → header check → flip binding →
+    delete source). <strong>Empty on this backend</strong> binds a fresh file without copying.
+    Sticky binding in <code>localStorage</code> outranks preference order, which is why a database
+    created on IndexedDB does not silently vanish when OPFS becomes available.
+</p>
+
+@if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+
+@if (_resolution is not null)
+{
+    <section class="card">
+        <h2>This session</h2>
+        <p>
+            Chosen backend: <span class="pill">@_resolution.Provider.Name</span>
+            @if (_resolution.IsFirstChoice)
+            {
+                <span> — first choice in the configured order.</span>
+            }
+            else
+            {
+                <span> — a fallback; see the attempt table.</span>
+            }
+            @if (_resolution.WasDecidedByExistingData)
+            {
+                <span> The file was already bound to this backend, so preference did not move it.</span>
+            }
+        </p>
+        @if (_resolution.BetterProviderAvailable is { } better)
+        {
+            <p class="warn">
+                @better.Name is available and ranked higher, but the data lives here.
+                <code>StorageMigrationMode.AutomaticOnOpen</code> would copy, run
+                <code>PRAGMA integrity_check</code>, then flip the binding. This sample uses the
+                default, <code>KeepExisting</code>.
+            </p>
+        }
+        <p>
+            Sticky binding in <code>localStorage</code>:
+            <code>@(_binding ?? "(none — first create on this origin)")</code>
+        </p>
+        <p>
+            Persistent storage (origin-wide, not per backend):
+            <strong>@(_persisted is null ? "not requested yet" : _persisted.Value ? "granted" : "denied")</strong>.
+            Without it, the browser may evict OPFS / IndexedDB / Cache Storage under pressure.
+        </p>
+        <button type="button" class="secondary" @onclick="RequestPersistenceAsync" disabled="@_busy">
+            Request persistent storage
+        </button>
+    </section>
+}
+
+<section class="card">
+    <h2>Selection attempts</h2>
+    <p>
+        Configured preference: <code>opfs</code> → <code>indexeddb</code> → <code>cache-storage</code> →
+        <code>in-memory</code>, with <code>AllowNonPersistentFallback()</code>. Use the bar to override
+        that for this origin.
+    </p>
+    @if (_resolution is not null)
+    {
+        <table>
+            <thead>
+            <tr><th>Provider</th><th>Status</th><th>Explanation</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var attempt in _resolution.Attempts)
+            {
+                <tr>
+                    <td><code>@attempt.ProviderName</code></td>
+                    <td>@attempt.Status</td>
+                    <td>@(attempt.Explanation ?? attempt.Probe?.UnavailableReason ?? "—")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</section>
+
+<section class="card">
+    <h2>Capabilities of the chosen backend</h2>
+    <p>
+        The core enforces these flags: it does not special-case OPFS vs IndexedDB in SQL.
+        A backend that cannot honour <code>ATTACH</code> or <code>PRAGMA page_size</code> fails
+        in <code>SqliteFeatureGuards</code> instead of corrupting.
+    </p>
+    @if (_caps is not null)
+    {
+        <table>
+            <tbody>
+            <tr><th>Engine build</th><td>@_caps.RequiredBuild</td></tr>
+            <tr><th>Survives reload</th><td>@SampleFormat.YesNo(_caps.IsPersistent)</td></tr>
+            <tr><th>Multiple connections</th><td>@SampleFormat.YesNo(_caps.SupportsMultipleConnections)</td></tr>
+            <tr><th>Concurrent reads</th><td>@SampleFormat.YesNo(_caps.SupportsConcurrentReads)</td></tr>
+            <tr><th>Relaxed durability</th><td>@SampleFormat.YesNo(_caps.SupportsRelaxedDurability)</td></tr>
+            <tr><th>Multi-database transactions</th><td>@SampleFormat.YesNo(_caps.SupportsMultiDatabaseTransactions)</td></tr>
+            <tr><th>Can change page size</th><td>@SampleFormat.YesNo(_caps.CanChangePageSize)</td></tr>
+            <tr><th>Contexts</th><td>@_caps.SupportedContexts</td></tr>
+            </tbody>
+        </table>
+    }
+</section>
+
+<section class="card">
+    <h2>Probe every registered provider</h2>
+    <p>
+        A probe reports availability, quota when the browser will say, and the raw environment
+        facts (JSPI, <code>navigator.storage.getDirectory</code>, and so on). Unavailable is a
+        result, not an exception, so selection can continue and still explain itself.
+    </p>
+    <button type="button" class="secondary" @onclick="ProbeAllAsync" disabled="@_busy">Probe now</button>
+    @if (_probes.Count > 0)
+    {
+        <table>
+            <thead>
+            <tr><th>Provider</th><th>Available</th><th>Quota</th><th>Why / environment</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var row in _probes)
+            {
+                <tr>
+                    <td><code>@row.Name</code></td>
+                    <td>@SampleFormat.YesNo(row.Probe.IsAvailable)</td>
+                    <td>
+                        @SampleFormat.Bytes(row.Probe.UsageBytes)
+                        /
+                        @SampleFormat.Bytes(row.Probe.QuotaBytes)
+                    </td>
+                    <td>
+                        @if (!row.Probe.IsAvailable)
+                        {
+                            @row.Probe.UnavailableReason
+                        }
+                        else if (row.Probe.Environment.Count == 0)
+                        {
+                            <span>—</span>
+                        }
+                        else
+                        {
+                            @string.Join(", ", row.Probe.Environment.Select(kv => $"{kv.Key}={kv.Value}"))
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    private StorageResolution? _resolution;
+    private BlazorSqliteStorageCapabilities? _caps;
+    private string? _binding;
+    private bool? _persisted;
+    private string? _error;
+    private bool _busy;
+    private readonly List<(string Name, BlazorSqliteProbeResult Probe)> _probes = [];
+
+    private static Task NoopAsync() => Task.CompletedTask;
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var session = await Database.EnsureSessionAsync();
+            _resolution = session.Resolution;
+            _caps = session.Resolution.Provider.Capabilities;
+            _binding = await Database.Bindings.GetProviderNameAsync(BrowserDatabase.DatabaseName);
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _error = ex.Message;
+        }
+    }
+
+    private async Task RequestPersistenceAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            _persisted = await BlazorSqlitePersistence.RequestAsync(Js);
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ProbeAllAsync()
+    {
+        _busy = true;
+        _error = null;
+        _probes.Clear();
+        try
+        {
+            foreach (var provider in Database.Providers)
+            {
+                var probe = await provider.ProbeAsync();
+                _probes.Add((provider.Name, probe));
+            }
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
