@@ -1,7 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <Description>The public, semver-stable storage provider contract for BlazorSqlite. Reference this to write a storage backend.</Description>
-  </PropertyGroup>
-
-</Project>

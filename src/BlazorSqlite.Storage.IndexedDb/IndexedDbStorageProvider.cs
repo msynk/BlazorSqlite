@@ -25,8 +25,8 @@ public sealed class IndexedDbStorageProvider : IBlazorSqliteStorageProvider
     /// <summary>The VFS name <c>open_v2</c> must ask for after registration.</summary>
     public const string VfsName = "idb-batch-atomic";
 
-    // Root-relative: the worker's base URL is the Js package, so a leading ./ would resolve
-    // under _content/BlazorSqlite.Js/ and miss this package's assets.
+    // Root-relative: the worker's base URL is the core package, so a leading ./ would resolve
+    // under _content/BlazorSqlite/ and miss this package's assets.
     public const string VfsModuleUrl = "/_content/BlazorSqlite.Storage.IndexedDb/idb-vfs.js";
 
     public const string AdminModuleUrl = "/_content/BlazorSqlite.Storage.IndexedDb/idb-admin.js";

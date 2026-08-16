@@ -3,11 +3,11 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { raiseFunctionTableLimit } from '../../src/BlazorSqlite.Js/wwwroot/blazor-sqlite-wasm-table.js';
+import { raiseFunctionTableLimit } from '../../src/BlazorSqlite/wwwroot/blazor-sqlite-wasm-table.js';
 
 const engineDir = join(
   dirname(fileURLToPath(import.meta.url)),
-  '../../src/BlazorSqlite.Js/wwwroot/engine');
+  '../../src/BlazorSqlite/wwwroot/engine');
 
 const builds = ['wa-sqlite.wasm', 'wa-sqlite-jspi.wasm', 'wa-sqlite-async.wasm'];
 

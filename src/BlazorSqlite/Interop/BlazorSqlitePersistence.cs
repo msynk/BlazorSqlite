@@ -19,7 +19,7 @@ public static class BlazorSqlitePersistence
             .InvokeAsync<IJSObjectReference>(
                 "import",
                 cancellationToken,
-                "./_content/BlazorSqlite.Js/blazor-sqlite-persist.js")
+                "./_content/BlazorSqlite/blazor-sqlite-persist.js")
             .ConfigureAwait(false);
 
         try

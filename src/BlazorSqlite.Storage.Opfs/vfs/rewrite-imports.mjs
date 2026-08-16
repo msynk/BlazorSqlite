@@ -1,7 +1,7 @@
 // Rewrites wa-sqlite example imports so they resolve from a provider package.
 //
 // Upstream files live in src/examples/ and import '../FacadeVFS.js'. That path does not exist
-// next to this package's wwwroot; the base classes are served from BlazorSqlite.Js. The rewrite
+// next to this package's wwwroot; the base classes are served from BlazorSqlite. The rewrite
 // is mechanical and checksummed against the untouched download, so a silent upstream edit fails
 // the build rather than shipping a VFS that cannot load.
 
@@ -14,8 +14,8 @@ if (!input || !output) {
 }
 
 const replacements = [
-  ["from '../FacadeVFS.js'", "from '/_content/BlazorSqlite.Js/engine/FacadeVFS.js'"],
-  ["from '../VFS.js'", "from '/_content/BlazorSqlite.Js/engine/VFS.js'"],
+  ["from '../FacadeVFS.js'", "from '/_content/BlazorSqlite/engine/FacadeVFS.js'"],
+  ["from '../VFS.js'", "from '/_content/BlazorSqlite/engine/VFS.js'"],
 ];
 
 let source = readFileSync(input, 'utf8');

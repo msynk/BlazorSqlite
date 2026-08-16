@@ -7,11 +7,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BlazorSqlite.Samples.Data\BlazorSqlite.Samples.Data.csproj" />
-    <ProjectReference Include="..\..\src\BlazorSqlite.EntityFrameworkCore\BlazorSqlite.EntityFrameworkCore.csproj" />
-    <ProjectReference Include="..\..\src\BlazorSqlite.Interop\BlazorSqlite.Interop.csproj" />
-    <ProjectReference Include="..\..\src\BlazorSqlite.Js\BlazorSqlite.Js.csproj" />
+    <ProjectReference Include="..\..\src\BlazorSqlite\BlazorSqlite.csproj" />
     <ProjectReference Include="..\..\src\BlazorSqlite.Storage.CacheStorage\BlazorSqlite.Storage.CacheStorage.csproj" />
-    <ProjectReference Include="..\..\src\BlazorSqlite.Storage.InMemory\BlazorSqlite.Storage.InMemory.csproj" />
     <ProjectReference Include="..\..\src\BlazorSqlite.Storage.IndexedDb\BlazorSqlite.Storage.IndexedDb.csproj" />
     <ProjectReference Include="..\..\src\BlazorSqlite.Storage.Opfs\BlazorSqlite.Storage.Opfs.csproj" />
   </ItemGroup>

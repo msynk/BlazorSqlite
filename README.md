@@ -8,14 +8,11 @@ EF Core on SQLite-WASM for Blazor WebAssembly. Same entities and migrations on t
 
 | Package | Role |
 |---|---|
-| `BlazorSqlite.EntityFrameworkCore` | `UseBlazorSqlite(connection)` |
-| `BlazorSqlite.Data` | ADO.NET + live queries |
-| `BlazorSqlite.Interop` | Worker transport, selection, migration |
-| `BlazorSqlite.Js` | Engine, worker, host |
-| `BlazorSqlite.Storage.InMemory` | Volatile reference backend |
+| `BlazorSqlite` | `UseBlazorSqlite(connection)`, ADO.NET + live queries, worker transport, selection and migration, the storage provider contract, the in-memory backend, and the browser assets (engine, worker, host) under `_content/BlazorSqlite` |
 | `BlazorSqlite.Storage.Opfs` | Persistent, sync engine, multi-connection |
 | `BlazorSqlite.Storage.IndexedDb` | Persistent, JSPI/Asyncify, widest reach |
 | `BlazorSqlite.Storage.CacheStorage` | Persistent, besql migration path |
+| `BlazorSqlite.Testing` | In-process transport for browser-free unit tests, plus the conformance kit every storage provider must pass |
 
 ## Sample
 

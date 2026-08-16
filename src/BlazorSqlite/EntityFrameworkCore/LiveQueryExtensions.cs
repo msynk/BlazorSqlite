@@ -64,6 +64,9 @@ public static class LiveQueryExtensions
     private static DbContext? ContextFromInfrastructure(IInfrastructure<IServiceProvider>? accessor)
         => accessor?.GetService<ICurrentDbContext>()?.Context;
 
+    // The last resort: reach through EF's query provider for the context. EF1001 is suppressed here
+    // and nowhere else, so the rest of the assembly still fails the build if it touches an internal.
+#pragma warning disable EF1001
     private static DbContext? ContextFromQueryProvider(IQueryProvider provider)
     {
         if (provider is not EntityQueryProvider entityProvider)
@@ -85,4 +88,5 @@ public static class LiveQueryExtensions
 
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_queryContextFactory")]
     private static extern ref IQueryContextFactory GetQueryContextFactory(QueryCompiler compiler);
+#pragma warning restore EF1001
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Decimal } from '../../src/BlazorSqlite.Js/wwwroot/blazor-sqlite-decimal.js';
+import { Decimal } from '../../src/BlazorSqlite/wwwroot/blazor-sqlite-decimal.js';
 
 const values = ['0', '10', '9', '-5', '2.5', '0.1', '100', '-0.25', '1234.5678', '3'];
 const optional = [null, '10', null, '-5', '2.5', null, '100', '-0.25', '1234.5678', '3'];

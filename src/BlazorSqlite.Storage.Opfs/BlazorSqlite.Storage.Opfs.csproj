@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\BlazorSqlite.Storage.Abstractions\BlazorSqlite.Storage.Abstractions.csproj" />
+    <ProjectReference Include="..\BlazorSqlite\BlazorSqlite.csproj" />
   </ItemGroup>
 
 </Project>

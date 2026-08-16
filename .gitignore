@@ -436,7 +436,7 @@ node_modules/
 
 # Vendored at build from the pin in engine/wa-sqlite.lock.props and verified by checksum, so the
 # bytes are reproducible without carrying ~3 MB of WASM in history on every engine upgrade.
-src/BlazorSqlite.Js/wwwroot/engine/
+src/BlazorSqlite/wwwroot/engine/
 
 # Rewritten from the pin in vfs/wa-sqlite.lock.props. The checksummed download lives in obj/upstream.
 src/BlazorSqlite.Storage.Opfs/wwwroot/OPFSCoopSyncVFS.js

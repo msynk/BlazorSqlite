@@ -23,7 +23,7 @@ namespace BlazorSqlite.Interop;
 public sealed class WorkerSqliteTransport : ISqliteTransport
 {
     /// <summary>The RCL path the worker host is served from.</summary>
-    public const string DefaultHostModuleUrl = "./_content/BlazorSqlite.Js/blazor-sqlite-host.js";
+    public const string DefaultHostModuleUrl = "./_content/BlazorSqlite/blazor-sqlite-host.js";
 
     private readonly IJSRuntime _js;
     private readonly WorkerSqliteTransportOptions _options;

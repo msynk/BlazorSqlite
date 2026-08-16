@@ -1,7 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <Description>ADO.NET surface for BlazorSqlite. Transport-agnostic: commands are executed by an ISqliteTransport implementation.</Description>
-  </PropertyGroup>
-
-</Project>

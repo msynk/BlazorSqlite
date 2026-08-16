@@ -9,7 +9,7 @@ namespace BlazorSqlite.Storage;
 /// <para>
 /// This contract is public and semver-stable from 1.0, and the core consumes nothing else: adding a
 /// backend requires no change to BlazorSqlite itself. Every implementation, first- or third-party,
-/// must pass <c>BlazorSqlite.Storage.ConformanceTests</c>, which is what makes the declared
+/// must pass the conformance kit shipped in <c>BlazorSqlite.Testing</c>, which is what makes the declared
 /// <see cref="Capabilities"/> trustworthy.
 /// </para>
 /// <para>

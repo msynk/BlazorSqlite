@@ -1,13 +1,6 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/BlazorSqlite.Abstractions/BlazorSqlite.Abstractions.csproj" />
-    <Project Path="src/BlazorSqlite.Data/BlazorSqlite.Data.csproj" />
-    <Project Path="src/BlazorSqlite.EntityFrameworkCore/BlazorSqlite.EntityFrameworkCore.csproj" />
-    <Project Path="src/BlazorSqlite.Interop/BlazorSqlite.Interop.csproj" />
-    <Project Path="src/BlazorSqlite.Js/BlazorSqlite.Js.csproj" />
-    <Project Path="src/BlazorSqlite.Storage.Abstractions/BlazorSqlite.Storage.Abstractions.csproj" />
-    <Project Path="src/BlazorSqlite.Storage.ConformanceTests/BlazorSqlite.Storage.ConformanceTests.csproj" />
-    <Project Path="src/BlazorSqlite.Storage.InMemory/BlazorSqlite.Storage.InMemory.csproj" />
+    <Project Path="src/BlazorSqlite/BlazorSqlite.csproj" />
     <Project Path="src/BlazorSqlite.Storage.Opfs/BlazorSqlite.Storage.Opfs.csproj" />
     <Project Path="src/BlazorSqlite.Storage.IndexedDb/BlazorSqlite.Storage.IndexedDb.csproj" />
     <Project Path="src/BlazorSqlite.Storage.CacheStorage/BlazorSqlite.Storage.CacheStorage.csproj" />

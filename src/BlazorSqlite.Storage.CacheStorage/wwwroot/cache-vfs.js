@@ -5,9 +5,9 @@
 // coordinated by WebLocksMixin. A database that exists only in besql's `bit-Besql` cache is
 // imported losslessly on first open and then served from our own layout.
 
-import { FacadeVFS } from '/_content/BlazorSqlite.Js/engine/FacadeVFS.js';
-import * as VFS from '/_content/BlazorSqlite.Js/engine/VFS.js';
-import { WebLocksMixin } from '/_content/BlazorSqlite.Js/engine/WebLocksMixin.js';
+import { FacadeVFS } from '/_content/BlazorSqlite/engine/FacadeVFS.js';
+import * as VFS from '/_content/BlazorSqlite/engine/VFS.js';
+import { WebLocksMixin } from '/_content/BlazorSqlite/engine/WebLocksMixin.js';
 
 export const VFS_NAME = 'cache-storage';
 export const CACHE_NAME = 'blazor-sqlite';

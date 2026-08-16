@@ -15,7 +15,7 @@ const port = Number(process.env.PORT ?? 5199);
 
 // Mirrors the RCL layout: the package's wwwroot is served under _content/<package>.
 const roots = [
-  { prefix: '/_content/BlazorSqlite.Js/', directory: join(here, '..', '..', 'src', 'BlazorSqlite.Js', 'wwwroot') },
+  { prefix: '/_content/BlazorSqlite/', directory: join(here, '..', '..', 'src', 'BlazorSqlite', 'wwwroot') },
   { prefix: '/_content/BlazorSqlite.Storage.Opfs/', directory: join(here, '..', '..', 'src', 'BlazorSqlite.Storage.Opfs', 'wwwroot') },
   { prefix: '/_content/BlazorSqlite.Storage.IndexedDb/', directory: join(here, '..', '..', 'src', 'BlazorSqlite.Storage.IndexedDb', 'wwwroot') },
   { prefix: '/_content/BlazorSqlite.Storage.CacheStorage/', directory: join(here, '..', '..', 'src', 'BlazorSqlite.Storage.CacheStorage', 'wwwroot') },
