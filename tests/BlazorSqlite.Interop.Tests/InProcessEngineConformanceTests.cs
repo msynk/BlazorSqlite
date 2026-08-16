@@ -7,7 +7,7 @@ namespace BlazorSqlite.Interop.Tests;
 /// <summary>
 /// Runs the engine kit against the in-process transport, which is how the kit is shown to be
 /// honest: a rule the reference engine cannot satisfy is a bug in the rule. Crash safety is
-/// correctly skipped — there is no worker to kill and nothing persists.
+/// correctly skipped - there is no worker to kill and nothing persists.
 /// </summary>
 public sealed class InProcessEngineConformanceTests : StorageEngineConformanceTests
 {

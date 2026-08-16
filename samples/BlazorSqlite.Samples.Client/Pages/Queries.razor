@@ -18,7 +18,7 @@
     <h2>Live query with Include</h2>
     <p>
         Table-level: any write to a table the SQL reads re-runs the query. Open
-        <a href="orders">Orders</a> in another tab and change a status — BroadcastChannel notifies
+        <a href="orders">Orders</a> in another tab and change a status - BroadcastChannel notifies
         this one. Customer is loaded with <code>Include</code>.
     </p>
     @if (_liveRows.Count == 0)
@@ -66,7 +66,7 @@
         <ul class="plain">
             @foreach (var customer in _decimalRows)
             {
-                <li>@customer.DisplayName — @SampleFormat.Money(customer.CreditLimit)</li>
+                <li>@customer.DisplayName - @SampleFormat.Money(customer.CreditLimit)</li>
             }
         </ul>
     }
@@ -88,7 +88,7 @@
         <ul class="plain">
             @foreach (var customer in _regexRows)
             {
-                <li>@customer.DisplayName — @customer.Email</li>
+                <li>@customer.DisplayName - @customer.Email</li>
             }
         </ul>
     }

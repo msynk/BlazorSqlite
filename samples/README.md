@@ -31,7 +31,7 @@ Then open http://localhost:5288.
 The header bar is the storage switch. **Move data** exports the SQLite image, imports it on the
 target, checks the header, flips the sticky binding, and deletes the source. **Empty on this
 backend** binds a fresh file. Existing data outranks configured preference (OPFS → IndexedDB →
-Cache Storage → in-memory). The two sides do not sync — that is post-1.0.
+Cache Storage → in-memory). The two sides do not sync - that is post-1.0.
 
 If you already had `app.db` from an earlier run, migrations add the new tables. Delete from Admin
 (or use **Empty on this backend**) to get the seeded workshop catalog.

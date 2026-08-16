@@ -3,7 +3,7 @@ using Xunit;
 namespace BlazorSqlite.Storage.Tests;
 
 /// <summary>
-/// Configuration mistakes here are silent in production — the wrong backend or the wrong order — so
+/// Configuration mistakes here are silent in production - the wrong backend or the wrong order - so
 /// the builder rejects them at the point they are written instead.
 /// </summary>
 public sealed class StorageSelectionBuilderTests

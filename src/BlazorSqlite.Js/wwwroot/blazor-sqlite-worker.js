@@ -2,7 +2,7 @@
 //
 // It exists because the storage APIs worth using are worker-only: OPFS synchronous access handles do
 // not exist on the main thread. Everything here is request/response over postMessage, correlated by
-// id, and strictly serialized — one SQLite connection cannot execute two statements at once, so
+// id, and strictly serialized - one SQLite connection cannot execute two statements at once, so
 // overlapping requests queue rather than interleave.
 
 import { loadEngine } from './blazor-sqlite-engine.js';
@@ -93,7 +93,7 @@ async function open({ databaseName, requiredBuild, vfs, limits }) {
     engine.vfsName ?? undefined);
 
   // EF Core's SQLite provider only installs these on a real SqliteConnection. We are not one, so
-  // every open has to — miss it and every decimal comparison, aggregate, and REGEXP is wrong.
+  // every open has to - miss it and every decimal comparison, aggregate, and REGEXP is wrong.
   registerFunctions(engine.module, engine.sqlite3, db);
 
   // Optional provider pragmas (cache_size for batch-atomic, and anything similar). Run here
@@ -228,7 +228,7 @@ function extractTables(sql) {
  * Binds by asking the statement what it wants, rather than handing the engine a dictionary and hoping
  * the keys line up.
  *
- * The alternative — `bind_collection` with a name-keyed object — leaves an unmatched parameter bound to
+ * The alternative - `bind_collection` with a name-keyed object - leaves an unmatched parameter bound to
  * NULL, which turns a misspelled parameter name into wrong results instead of an error. Names are
  * matched with or without their sigil, because ADO.NET callers write `p0` as often as `@p0`, and a
  * statement using positional `?` markers reports no name at all and is matched by position.
@@ -238,7 +238,7 @@ function extractTables(sql) {
 /**
  * WAL is not a VFS-specific limitation: no web build of SQLite can provide the shared memory it
  * needs. Rejected here as well as in the .NET command layer so a JavaScript caller cannot enable it
- * either — and so a "success" that actually left DELETE mode cannot be mistaken for WAL.
+ * either - and so a "success" that actually left DELETE mode cannot be mistaken for WAL.
  */
 function rejectUnsupportedSql(sql) {
   if (typeof sql !== 'string') {

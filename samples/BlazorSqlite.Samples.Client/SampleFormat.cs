@@ -21,7 +21,7 @@ internal static class SampleFormat
 
     public static string When(DateTimeOffset value) => value.ToString("yyyy-MM-dd HH:mm zzz");
 
-    public static string Day(DateOnly? value) => value?.ToString("yyyy-MM-dd") ?? "—";
+    public static string Day(DateOnly? value) => value?.ToString("yyyy-MM-dd") ?? "-";
 
     public static string Day(DateOnly value) => value.ToString("yyyy-MM-dd");
 

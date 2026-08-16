@@ -9,8 +9,8 @@ namespace BlazorSqlite.Testing;
 /// </summary>
 /// <remarks>
 /// Stands in for the web-worker transport so provider behaviour can be tested on desktop .NET.
-/// It mirrors the worker's responsibilities exactly — including installing the EF function set
-/// (see <see cref="SqliteFunctions"/>) — so a test that passes here is a meaningful signal.
+/// It mirrors the worker's responsibilities exactly - including installing the EF function set
+/// (see <see cref="SqliteFunctions"/>) - so a test that passes here is a meaningful signal.
 /// </remarks>
 public sealed class InProcessSqliteTransport : ISqliteTransport
 {

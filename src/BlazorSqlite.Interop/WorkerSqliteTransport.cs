@@ -11,7 +11,7 @@ namespace BlazorSqlite.Interop;
 /// <remarks>
 /// <para>
 /// The worker is the process; this type is the socket. It imports the host module, asks it for a
-/// host object, and then speaks only in <c>call</c> envelopes — never by letting a JavaScript
+/// host object, and then speaks only in <c>call</c> envelopes - never by letting a JavaScript
 /// exception cross the boundary, because Blazor would strip the SQLite result code on the way.
 /// </para>
 /// <para>

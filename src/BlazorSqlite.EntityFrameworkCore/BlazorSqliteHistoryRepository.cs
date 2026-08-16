@@ -8,7 +8,7 @@ namespace BlazorSqlite.EntityFrameworkCore;
 /// <remarks>
 /// <para>
 /// EF's SQLite history repository guards migrations with a database-level lock whose
-/// <c>Dispose()</c> runs <c>ExecuteScalar</c> — synchronously, even on the <c>MigrateAsync</c> path.
+/// <c>Dispose()</c> runs <c>ExecuteScalar</c> - synchronously, even on the <c>MigrateAsync</c> path.
 /// That is the second and last blocker the S1 audit found.
 /// </para>
 /// <para>
@@ -38,7 +38,7 @@ public sealed class BlazorSqliteHistoryRepository(HistoryRepositoryDependencies 
 
     /// <summary>
     /// Reuses the model-driven create script so the table and column names stay in step with EF,
-    /// and only splices in <c>IF NOT EXISTS</c> — which is what SQLite offers in place of the
+    /// and only splices in <c>IF NOT EXISTS</c> - which is what SQLite offers in place of the
     /// conditional blocks other providers use.
     /// </summary>
     public override string GetCreateIfNotExistsScript()

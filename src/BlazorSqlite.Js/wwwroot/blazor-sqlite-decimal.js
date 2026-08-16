@@ -2,8 +2,8 @@
 //
 // EF Core stores decimals as TEXT and asks the worker to add, divide, compare, and order them. IEEE
 // floats cannot do that: 0.1 is already wrong, and 1/3 must come back as twenty-eight threes, not as
-// 0.3333333333333333. The representation is the same one .NET uses — a 96-bit coefficient, a scale
-// of 0–28, and a sign — so the strings we write are the strings EF will later compare with `=`.
+// 0.3333333333333333. The representation is the same one .NET uses - a 96-bit coefficient, a scale
+// of 0–28, and a sign - so the strings we write are the strings EF will later compare with `=`.
 
 const MAX_COEFF = (1n << 96n) - 1n;
 const MAX_SCALE = 28;
@@ -40,7 +40,7 @@ export class Decimal {
 
   /**
    * Parses invariant-culture decimal text. Leading and trailing whitespace and a leading sign are
-   * accepted; thousands separators and exponents are not — EF never writes those.
+   * accepted; thousands separators and exponents are not - EF never writes those.
    *
    * @param {string} text
    */
@@ -199,7 +199,7 @@ export class Decimal {
   }
 
   /**
-   * Remainder with the sign of the dividend, truncated toward zero — `a - Truncate(a/b)*b`.
+   * Remainder with the sign of the dividend, truncated toward zero - `a - Truncate(a/b)*b`.
    */
   remainder(other) {
     if (other.coeff === 0n) {

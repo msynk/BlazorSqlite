@@ -33,7 +33,7 @@ public static class BlazorSqliteDbContextOptionsExtensions
     /// <remarks>
     /// When <paramref name="contextOwnsConnection"/> is <see langword="true"/>, disposing the
     /// context disposes the connection. Leave it <see langword="false"/> when the connection comes
-    /// from a <c>BlazorSqliteSession</c> — the session owns the transport, and an ADO.NET close is
+    /// from a <c>BlazorSqliteSession</c> - the session owns the transport, and an ADO.NET close is
     /// bookkeeping only.
     /// </remarks>
     public static DbContextOptionsBuilder UseBlazorSqlite(

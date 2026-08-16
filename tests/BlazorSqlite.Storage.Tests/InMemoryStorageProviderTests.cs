@@ -4,8 +4,8 @@ using Xunit;
 namespace BlazorSqlite.Storage.Tests;
 
 /// <summary>
-/// What the in-memory backend promises beyond the contract. The generic rules — round-tripping,
-/// replacement, detached exports, idempotent deletes — are checked by
+/// What the in-memory backend promises beyond the contract. The generic rules - round-tripping,
+/// replacement, detached exports, idempotent deletes - are checked by
 /// <see cref="InMemoryStorageConformanceTests"/>, so this file covers only the choices specific to
 /// this backend.
 /// </summary>

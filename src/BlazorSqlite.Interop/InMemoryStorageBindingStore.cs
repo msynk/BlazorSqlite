@@ -4,8 +4,8 @@ namespace BlazorSqlite.Interop;
 /// A binding store that remembers nothing beyond the current session.
 /// </summary>
 /// <remarks>
-/// The real store has to outlive the page — the whole point is to know where a database went before
-/// this session started — so this is for tests and for configurations where every backend is itself
+/// The real store has to outlive the page - the whole point is to know where a database went before
+/// this session started - so this is for tests and for configurations where every backend is itself
 /// volatile. Production registers a store backed by durable browser storage.
 /// </remarks>
 public sealed class InMemoryStorageBindingStore : IStorageBindingStore

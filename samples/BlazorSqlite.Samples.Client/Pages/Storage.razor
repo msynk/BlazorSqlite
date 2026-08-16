@@ -25,11 +25,11 @@
             Chosen backend: <span class="pill">@_resolution.Provider.Name</span>
             @if (_resolution.IsFirstChoice)
             {
-                <span> — first choice in the configured order.</span>
+                <span> - first choice in the configured order.</span>
             }
             else
             {
-                <span> — a fallback; see the attempt table.</span>
+                <span> - a fallback; see the attempt table.</span>
             }
             @if (_resolution.WasDecidedByExistingData)
             {
@@ -47,7 +47,7 @@
         }
         <p>
             Sticky binding in <code>localStorage</code>:
-            <code>@(_binding ?? "(none — first create on this origin)")</code>
+            <code>@(_binding ?? "(none - first create on this origin)")</code>
         </p>
         <p>
             Persistent storage (origin-wide, not per backend):
@@ -79,7 +79,7 @@
                 <tr>
                     <td><code>@attempt.ProviderName</code></td>
                     <td>@attempt.Status</td>
-                    <td>@(attempt.Explanation ?? attempt.Probe?.UnavailableReason ?? "—")</td>
+                    <td>@(attempt.Explanation ?? attempt.Probe?.UnavailableReason ?? "-")</td>
                 </tr>
             }
             </tbody>
@@ -143,7 +143,7 @@
                         }
                         else if (row.Probe.Environment.Count == 0)
                         {
-                            <span>—</span>
+                            <span>-</span>
                         }
                         else
                         {

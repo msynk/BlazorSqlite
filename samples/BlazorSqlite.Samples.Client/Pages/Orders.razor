@@ -7,7 +7,7 @@
     Orders are a master-detail graph: <code>DateTimeOffset</code> on the header, a string-backed
     enum for status, and line items that join products. SQLite cannot compare or
     <code>ORDER BY</code> <code>DateTimeOffset</code> (stock EF limitation), so the grid sorts
-    by <code>Id</code>. Deleting a product that is on an order is refused by the restrict FK —
+    by <code>Id</code>. Deleting a product that is on an order is refused by the restrict FK -
     try it from Catalog.
 </p>
 
@@ -98,7 +98,7 @@
                     <select @bind="_newProductId">
                         @foreach (var product in _products)
                         {
-                            <option value="@product.Id">@product.Sku — @product.Name</option>
+                            <option value="@product.Id">@product.Sku - @product.Name</option>
                         }
                     </select>
                 </label>

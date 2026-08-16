@@ -4,8 +4,8 @@
 <SessionLifecycle OnReady="LoadAsync" OnTearDown="UnloadAsync" />
 
 <p class="lead">
-    This tab is a real SQLite database. The same EF Core model — decimals, GUIDs, dates,
-    enums, live queries — runs through BlazorSqlite on whatever backend you pick above.
+    This tab is a real SQLite database. The same EF Core model - decimals, GUIDs, dates,
+    enums, live queries - runs through BlazorSqlite on whatever backend you pick above.
     Nothing here talks to the server except the WASM download.
 </p>
 
@@ -38,7 +38,7 @@
         <h2>Live catalog</h2>
         <p>
             <code>AsLiveQuery()</code> on <code>Products</code>. Add a row on
-            <a href="catalog">Catalog</a> — this list re-runs, including from another tab.
+            <a href="catalog">Catalog</a> - this list re-runs, including from another tab.
         </p>
         @if (_liveRows.Count == 0)
         {
@@ -86,11 +86,11 @@
 <section class="card" style="margin-top:1rem">
     <h2>Where to go next</h2>
     <ul class="plain">
-        <li><a href="catalog">Catalog</a> — categories and products, including discontinued <code>DateOnly?</code> rows.</li>
-        <li><a href="customers">Customers</a> — GUIDs, VIP flag, decimal credit limits.</li>
-        <li><a href="orders">Orders</a> — master-detail lines, enum status, <code>DateTimeOffset</code>.</li>
-        <li><a href="storage">Storage</a> — probes, capabilities, persistent-storage permission.</li>
-        <li><a href="queries">SQL</a> — generated SQL, <code>ef_compare</code>, <code>REGEXP</code>.</li>
+        <li><a href="catalog">Catalog</a> - categories and products, including discontinued <code>DateOnly?</code> rows.</li>
+        <li><a href="customers">Customers</a> - GUIDs, VIP flag, decimal credit limits.</li>
+        <li><a href="orders">Orders</a> - master-detail lines, enum status, <code>DateTimeOffset</code>.</li>
+        <li><a href="storage">Storage</a> - probes, capabilities, persistent-storage permission.</li>
+        <li><a href="queries">SQL</a> - generated SQL, <code>ef_compare</code>, <code>REGEXP</code>.</li>
     </ul>
 </section>
 

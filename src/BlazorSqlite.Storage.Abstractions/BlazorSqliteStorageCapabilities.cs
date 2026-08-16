@@ -12,8 +12,8 @@ namespace BlazorSqlite.Storage;
 /// </para>
 /// <para>
 /// Defaults are the *least* capable answer, so a provider that omits a property loses a feature
-/// rather than making a promise it cannot keep. Only the two facts that cannot be guessed safely —
-/// which engine build the VFS needs, and whether data survives a reload — are required.
+/// rather than making a promise it cannot keep. Only the two facts that cannot be guessed safely -
+/// which engine build the VFS needs, and whether data survives a reload - are required.
 /// </para>
 /// </remarks>
 public sealed record BlazorSqliteStorageCapabilities

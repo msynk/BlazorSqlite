@@ -51,6 +51,6 @@ public sealed record StorageCandidateOutcome
         var detail = Explanation ?? Probe?.UnavailableReason;
         return detail is null
             ? $"{ProviderName}: {Status}"
-            : $"{ProviderName}: {Status} — {detail}";
+            : $"{ProviderName}: {Status} - {detail}";
     }
 }

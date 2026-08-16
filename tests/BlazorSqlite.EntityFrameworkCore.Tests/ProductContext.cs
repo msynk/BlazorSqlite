@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BlazorSqlite.EntityFrameworkCore.Tests;
 
-/// <summary>Exercises decimal, navigations, and indexes — the mappings that depend on the UDF host.</summary>
+/// <summary>Exercises decimal, navigations, and indexes - the mappings that depend on the UDF host.</summary>
 public sealed class ProductContext(DbContextOptions<ProductContext> options) : DbContext(options)
 {
     public DbSet<Category> Categories => Set<Category>();

@@ -2,7 +2,7 @@
 //
 // EF only installs these when the connection is a real Microsoft.Data.Sqlite connection. BlazorSqlite
 // supplies its own, so the worker has to. The names, arities, and results match
-// `SqliteFunctions` on the .NET side — S4 is the oracle, and the browser suite repeats it here.
+// `SqliteFunctions` on the .NET side - S4 is the oracle, and the browser suite repeats it here.
 //
 // Decimals are TEXT. Arithmetic goes through `Decimal`, never through JavaScript numbers: a float
 // would make 1/3 and 0.1 silently wrong, and EF's equality is a string compare against the canonical
@@ -13,7 +13,7 @@ import * as SQLite from './engine/sqlite-constants.js';
 
 const FUNCTION_FLAGS = SQLite.SQLITE_UTF8 | SQLite.SQLITE_DETERMINISTIC | SQLite.SQLITE_INNOCUOUS;
 
-/** One WASM function pointer per module — re-registering the collation must not leak a new one. */
+/** One WASM function pointer per module - re-registering the collation must not leak a new one. */
 const collationPointers = new WeakMap();
 
 /** Per-aggregate instance state, keyed by the pointer `sqlite3_aggregate_context` hands back. */
@@ -55,7 +55,7 @@ export function registerFunctions(module, sqlite3, db) {
   binary('ef_add', (left, right) => left.add(right));
   binary('ef_multiply', (left, right) => left.multiply(right));
 
-  // Division and modulo return null on a zero divisor — that is EF's contract, not an error — so
+  // Division and modulo return null on a zero divisor - that is EF's contract, not an error - so
   // they write the result themselves rather than going through `binary`.
   sqlite3.create_function(db, 'ef_divide', 2, flags, 0, guarded(module, (ctx, values) => {
     const left = readDecimal(sqlite3, values[0]);
@@ -91,7 +91,7 @@ export function registerFunctions(module, sqlite3, db) {
     sqlite3.result(ctx, left === null || right === null ? null : left.compareTo(right));
   });
 
-  // SQLite calls regexp(pattern, input) for `input REGEXP pattern` — arguments reversed from
+  // SQLite calls regexp(pattern, input) for `input REGEXP pattern` - arguments reversed from
   // Regex.IsMatch. There is no match timeout here: JavaScript's RegExp cannot be interrupted, and
   // the patterns EF emits terminate. Lookaround and backreferences must work; they are why the
   // .NET side does not use RegexOptions.NonBacktracking.
@@ -171,7 +171,7 @@ export function registerFunctions(module, sqlite3, db) {
 /**
  * `sqlite3_create_collation` is exported from the WASM module but not wrapped by wa-sqlite's JS API,
  * so the compare callback is installed with `addFunction` and the C entry is called directly.
- * That needs a free table slot — `loadEngine` raises the table maximum for this reason.
+ * That needs a free table slot - `loadEngine` raises the table maximum for this reason.
  */
 function registerCollation(module, db) {
   let pointer = collationPointers.get(module);

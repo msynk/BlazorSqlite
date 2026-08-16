@@ -7,7 +7,7 @@ namespace BlazorSqlite.Storage;
 /// </summary>
 /// <remarks>
 /// Constructed through <see cref="Available"/> and <see cref="Unavailable"/> so that an unavailable
-/// result always carries a reason — a probe that fails without saying why is the thing that makes
+/// result always carries a reason - a probe that fails without saying why is the thing that makes
 /// these bugs unanswerable.
 /// </remarks>
 public sealed record BlazorSqliteProbeResult
@@ -32,7 +32,7 @@ public sealed record BlazorSqliteProbeResult
     public long? UsageBytes { get; private init; }
 
     /// <summary>
-    /// The environment facts the verdict rests on — for example <c>crossOriginIsolated</c>,
+    /// The environment facts the verdict rests on - for example <c>crossOriginIsolated</c>,
     /// <c>navigator.storage.getDirectory</c>, or JSPI support. Reported as observed, without
     /// interpretation.
     /// </summary>

@@ -8,7 +8,7 @@ namespace BlazorSqlite.Data;
 /// <remarks>
 /// <para>
 /// Dates, times, and GUIDs each have more than one reasonable SQLite storage form. The wire format
-/// therefore refuses them, so this layer — the equivalent of <c>SqliteParameter.Bind</c> — owns the
+/// therefore refuses them, so this layer - the equivalent of <c>SqliteParameter.Bind</c> - owns the
 /// choice. The formats here are Microsoft.Data.Sqlite's defaults (TEXT, not Julian-day REAL or
 /// binary GUIDs), which is also what EF Core's SQLite type mapping expects when the store type is
 /// TEXT.

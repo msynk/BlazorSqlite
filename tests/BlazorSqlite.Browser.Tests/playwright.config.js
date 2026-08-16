@@ -4,11 +4,11 @@ const port = 5199;
 
 /**
  * Browsers already installed on the machine are used by default rather than Playwright's own builds.
- * Besides being faster, it is the only option in regions where Playwright's CDN is blocked — installing
+ * Besides being faster, it is the only option in regions where Playwright's CDN is blocked - installing
  * its Chromium fails there with a 403, so a config that required it would make these tests unrunnable.
  *
  * Set BLAZORSQLITE_BROWSERS=all to add Firefox and WebKit. Those have no installed-browser equivalent
- * and do need `playwright install`, so they are opt-in — but they are also the browsers that matter
+ * and do need `playwright install`, so they are opt-in - but they are also the browsers that matter
  * most for the storage matrix, since neither has JSPI and both must therefore work on Asyncify.
  */
 const includeDownloadedBrowsers = process.env.BLAZORSQLITE_BROWSERS === 'all';

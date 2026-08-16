@@ -13,7 +13,7 @@ namespace BlazorSqlite.Testing;
 /// EF's <c>SqliteRelationalConnection</c> only installs these when the connection is literally a
 /// <see cref="SqliteConnection"/>; against any other <c>DbConnection</c> it logs
 /// <c>UnexpectedConnectionTypeWarning</c> and moves on. Since BlazorSqlite supplies its own
-/// connection, it inherits the obligation — miss it and every <see cref="decimal"/> comparison,
+/// connection, it inherits the obligation - miss it and every <see cref="decimal"/> comparison,
 /// aggregate, and ordering silently produces wrong answers.
 /// </para>
 /// <para>
@@ -29,7 +29,7 @@ public static class SqliteFunctions
     {
         ArgumentNullException.ThrowIfNull(connection);
 
-        // SQLite calls regexp(pattern, input) for `input REGEXP pattern` — arguments reversed
+        // SQLite calls regexp(pattern, input) for `input REGEXP pattern` - arguments reversed
         // relative to Regex.IsMatch. RegexOptions.NonBacktracking is deliberately *not* used: it
         // rejects lookaround and backreferences that the stock provider accepts, which S4 caught as
         // a conformance break. The timeout is the guard against catastrophic backtracking instead,

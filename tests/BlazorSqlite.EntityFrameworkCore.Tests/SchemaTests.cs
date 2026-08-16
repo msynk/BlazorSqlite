@@ -6,7 +6,7 @@ using Xunit;
 namespace BlazorSqlite.EntityFrameworkCore.Tests;
 
 /// <summary>
-/// The schema paths the S1 audit found blocked — now the exit criterion for <c>UseBlazorSqlite</c>.
+/// The schema paths the S1 audit found blocked - now the exit criterion for <c>UseBlazorSqlite</c>.
 /// </summary>
 public sealed class SchemaTests
 {

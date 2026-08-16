@@ -24,7 +24,7 @@ namespace BlazorSqlite.Interop;
 /// </para>
 /// <para>
 /// This is a JSON encoding because it must survive Blazor's JS interop, which serializes arguments.
-/// It is also the layer to replace when interop cost shows up in the S2 measurements — the ADO.NET
+/// It is also the layer to replace when interop cost shows up in the S2 measurements - the ADO.NET
 /// layer never sees it, so a byte-oriented marshaller can be swapped in without touching anything above.
 /// </para>
 /// </remarks>
@@ -148,8 +148,8 @@ public static class SqliteWireFormat
             default:
                 throw new NotSupportedException(
                     $"Parameter '{parameterName}' is of type {value.GetType()}, which the transport does "
-                    + "not convert. Values with more than one sensible SQLite representation — dates, "
-                    + "times, and GUIDs among them — must be converted by the ADO.NET binder before "
+                    + "not convert. Values with more than one sensible SQLite representation - dates, "
+                    + "times, and GUIDs among them - must be converted by the ADO.NET binder before "
                     + "reaching the transport, so that one component owns the choice.");
         }
     }
@@ -161,7 +161,7 @@ public static class SqliteWireFormat
 
     /// <summary>
     /// Reads the envelope returned by the host's <c>call</c> method, which never throws across JS
-    /// interop — Blazor would otherwise reduce a JavaScript error to its message and drop the SQLite
+    /// interop - Blazor would otherwise reduce a JavaScript error to its message and drop the SQLite
     /// result code.
     /// </summary>
     /// <exception cref="BlazorSqliteException">The worker reported a failure.</exception>

@@ -8,14 +8,14 @@ namespace BlazorSqlite.Storage.ConformanceTests;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The core trusts <see cref="IBlazorSqliteStorageProvider.Capabilities"/> without verifying it —
+/// The core trusts <see cref="IBlazorSqliteStorageProvider.Capabilities"/> without verifying it -
 /// selection, pragma guarding, and durability options are all driven by what a backend claims. This
 /// suite is what makes that trust reasonable: it checks that the claims are internally coherent and
 /// that the admin surface behaves the way cross-provider migration assumes.
 /// </para>
 /// <para>
 /// It covers what can be checked without a running engine. Claims that only a real database can
-/// settle — write atomicity, crash safety, the concurrency levels — are verified by the engine-level
+/// settle - write atomicity, crash safety, the concurrency levels - are verified by the engine-level
 /// suite, which needs the worker host.
 /// </para>
 /// </remarks>
@@ -118,7 +118,7 @@ public abstract class StorageProviderConformanceTests : IAsyncDisposable
     }
 
     /// <summary>
-    /// Capabilities are read once and cached, and probing must not change them — a backend that
+    /// Capabilities are read once and cached, and probing must not change them - a backend that
     /// downgrades itself after probing would have already been selected on the stronger claim.
     /// </summary>
     [Fact]
@@ -305,7 +305,7 @@ public abstract class StorageProviderConformanceTests : IAsyncDisposable
     }
 
     /// <summary>
-    /// Import is specified to replace, and must leave no trace of the previous image — a backend that
+    /// Import is specified to replace, and must leave no trace of the previous image - a backend that
     /// overwrote in place would leave the tail of a larger database behind.
     /// </summary>
     [Fact]

@@ -32,7 +32,7 @@ public interface IBlazorSqliteStorageAdmin
     /// Writes a SQLite file image in, replacing any existing database of that name.
     /// </summary>
     /// <remarks>
-    /// Callers are expected to verify the result — the migration protocol runs
+    /// Callers are expected to verify the result - the migration protocol runs
     /// <c>PRAGMA integrity_check</c> against the copy before it trusts it.
     /// </remarks>
     ValueTask ImportAsync(

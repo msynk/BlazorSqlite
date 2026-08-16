@@ -65,7 +65,7 @@ test.describe('executing SQL', () => {
     const selected = await query(page, 'SELECT id, name, price, NULL AS absent FROM product');
 
     // 'price' is declared REAL but was given an integer, and this reports what SQLite stored rather
-    // than what the column was declared as — the engine is built without declared types at all.
+    // than what the column was declared as - the engine is built without declared types at all.
     expect(selected.columnTypes).toEqual(['INTEGER', 'TEXT', 'REAL', null]);
   });
 });
@@ -154,7 +154,7 @@ test.describe('value round-tripping', () => {
 
   /**
    * Integers beyond 2^53 cannot be represented exactly as a JavaScript number, and SQLite's INTEGER is
-   * 64-bit. The engine hands these back as BigInt, which the .NET transport must be prepared for —
+   * 64-bit. The engine hands these back as BigInt, which the .NET transport must be prepared for -
    * JSON interop cannot carry it.
    */
   test('returns a big integer as a BigInt rather than losing precision', async ({ page }) => {

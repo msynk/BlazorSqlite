@@ -96,7 +96,7 @@ public sealed class BlazorSqliteConnection : DbConnection
     /// <para>
     /// That also makes <see cref="Close"/> safe to leave synchronous. It is reached from
     /// <c>DbContext.Dispose()</c>, which is far too common to forbid, and blocking on an async close
-    /// would deadlock the browser's single main thread — the exact failure this type exists to avoid.
+    /// would deadlock the browser's single main thread - the exact failure this type exists to avoid.
     /// </para>
     /// </remarks>
     public override void Close() => _state = ConnectionState.Closed;

@@ -1,7 +1,7 @@
 // Cache Storage as a bag of SQLite file images, without the engine.
 //
 // Our layout is page-sized entries under the `blazor-sqlite` cache. besql stored a whole file
-// under `bit-Besql` at `/data/cache/{name}` — list/export/exists see those too so a migration
+// under `bit-Besql` at `/data/cache/{name}` - list/export/exists see those too so a migration
 // can copy them out. Opening through the VFS imports a besql file losslessly into our layout.
 
 import {

@@ -8,7 +8,7 @@ namespace BlazorSqlite.EntityFrameworkCore;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <c>RelationalDatabaseCreator.CreateAsync</c> has no async implementation of its own — it calls
+/// <c>RelationalDatabaseCreator.CreateAsync</c> has no async implementation of its own - it calls
 /// the synchronous <c>Create()</c>, which opens the connection synchronously. That is why both
 /// <c>EnsureCreatedAsync</c> and <c>MigrateAsync</c> fail against the default tier unless this
 /// service is replaced. Everything above it (<c>CreateTablesAsync</c>, the migration command
@@ -29,7 +29,7 @@ public sealed class BlazorSqliteDatabaseCreator(
     // EF's own version omits the NOT LIKE clause, because its Delete() removes the database file
     // outright and so never has to reason about leftovers. Deletion here drops tables instead, and
     // SQLite's internal bookkeeping tables (sqlite_sequence, created by AUTOINCREMENT) cannot be
-    // dropped — counting them would make an emptied database look populated.
+    // dropped - counting them would make an emptied database look populated.
     private const string CountTablesSql = """
         SELECT COUNT(*) FROM "sqlite_master"
         WHERE "type" = 'table' AND "rootpage" IS NOT NULL AND "name" NOT LIKE 'sqlite_%'

@@ -1,7 +1,7 @@
 // OPFS as a bag of files, without the engine.
 //
 // Probe and admin run on the window: getDirectory is available there. Sync access handles are
-// not — those exist only in the worker, which is why the VFS is worker-only and this module is not.
+// not - those exist only in the worker, which is why the VFS is worker-only and this module is not.
 // Related files (-journal, -wal) and the VFS's temporary .ahp-* directories are not databases.
 
 const RELATED_SUFFIXES = ['-journal', '-wal'];

@@ -6,7 +6,7 @@ namespace BlazorSqlite.Interop;
 /// Asks the browser to keep origin storage out of the LRU eviction bucket.
 /// </summary>
 /// <remarks>
-/// Not on the frozen admin contract — persistence is an origin setting, not a per-backend one.
+/// Not on the frozen admin contract - persistence is an origin setting, not a per-backend one.
 /// </remarks>
 public static class BlazorSqlitePersistence
 {

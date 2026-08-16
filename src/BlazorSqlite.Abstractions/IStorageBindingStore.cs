@@ -6,7 +6,7 @@ namespace BlazorSqlite;
 /// </summary>
 /// <remarks>
 /// This is the data-loss guard. Without it, a database created on IndexedDB would be shadowed by a
-/// fresh, empty OPFS database the moment a browser update made OPFS available — the application would
+/// fresh, empty OPFS database the moment a browser update made OPFS available - the application would
 /// see an empty database and no error. The store therefore has to live somewhere no single backend
 /// owns, and it holds names only, never data.
 /// </remarks>

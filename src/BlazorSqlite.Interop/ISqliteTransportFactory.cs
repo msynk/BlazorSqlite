@@ -14,8 +14,8 @@ namespace BlazorSqlite.Interop;
 public interface ISqliteTransportFactory
 {
     /// <summary>
-    /// A transport configured for <paramref name="provider"/> — its required engine build and VFS
-    /// module — but not yet opened.
+    /// A transport configured for <paramref name="provider"/> - its required engine build and VFS
+    /// module - but not yet opened.
     /// </summary>
     ISqliteTransport Create(IBlazorSqliteStorageProvider provider);
 }

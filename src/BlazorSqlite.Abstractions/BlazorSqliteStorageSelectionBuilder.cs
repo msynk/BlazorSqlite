@@ -36,7 +36,7 @@ public sealed class BlazorSqliteStorageSelectionBuilder
         if (_candidates.Count == 0)
         {
             throw new InvalidOperationException(
-                $"Call Prefer(\"{providerName}\") first — a fallback needs something to fall back from.");
+                $"Call Prefer(\"{providerName}\") first - a fallback needs something to fall back from.");
         }
 
         if (_candidates.Contains(providerName, StringComparer.OrdinalIgnoreCase))

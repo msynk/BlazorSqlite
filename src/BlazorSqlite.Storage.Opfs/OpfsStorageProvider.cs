@@ -9,7 +9,7 @@ namespace BlazorSqlite.Storage.Opfs;
 /// <remarks>
 /// <para>
 /// Chosen over AccessHandlePoolVFS because more than one connection may be open and the
-/// <c>.db</c> is a real file — export is a read. Access handles are worker-only, so the engine
+/// <c>.db</c> is a real file - export is a read. Access handles are worker-only, so the engine
 /// stays in a dedicated worker; probe and admin use the async file API and can run on the window.
 /// </para>
 /// <para>

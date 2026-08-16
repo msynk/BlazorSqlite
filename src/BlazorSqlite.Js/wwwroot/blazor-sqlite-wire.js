@@ -1,8 +1,8 @@
 // The wire format shared by the worker and the .NET transport.
 //
 // JSON cannot carry two things SQLite returns routinely: integers outside the range a JavaScript number
-// holds exactly, and blobs. Both would fail quietly — a 64-bit key losing its low bits, a blob arriving
-// as an array of numbers — so every value travels tagged with its SQLite storage class.
+// holds exactly, and blobs. Both would fail quietly - a 64-bit key losing its low bits, a blob arriving
+// as an array of numbers - so every value travels tagged with its SQLite storage class.
 //
 // The tags are SQLite's own type codes, which is why this module can label a value straight from
 // sqlite3_column_type with no translation table. The .NET half mirrors this file exactly; see
@@ -153,7 +153,7 @@ export function decodeValue(type, value) {
 }
 
 // Chunked because spreading a large array into String.fromCharCode overflows the argument limit, which
-// shows up only once a blob gets big — exactly where it is least welcome.
+// shows up only once a blob gets big - exactly where it is least welcome.
 const CHUNK = 0x8000;
 
 function toBase64(bytes) {

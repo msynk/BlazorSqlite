@@ -2,7 +2,7 @@ namespace BlazorSqlite.Storage;
 
 /// <summary>
 /// A storage backend for BlazorSqlite. Implement this to persist SQLite databases somewhere the
-/// first-party providers do not reach — an encrypted store, a read-only HTTP range server, or a
+/// first-party providers do not reach - an encrypted store, a read-only HTTP range server, or a
 /// browser API that does not exist yet.
 /// </summary>
 /// <remarks>
@@ -24,7 +24,7 @@ public interface IBlazorSqliteStorageProvider
     /// </summary>
     /// <remarks>
     /// Compared case-insensitively, and recorded as the sticky binding of every database this backend
-    /// creates — so renaming it after release orphans existing data. Third parties should qualify
+    /// creates - so renaming it after release orphans existing data. Third parties should qualify
     /// their names to avoid colliding with a future first-party backend.
     /// </remarks>
     string Name { get; }

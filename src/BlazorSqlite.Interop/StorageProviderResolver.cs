@@ -12,7 +12,7 @@ namespace BlazorSqlite.Interop;
 /// <para>
 /// Two rules shape everything here. First, existing data outranks preference: if a database was
 /// created on one backend, that backend is used, and if it cannot be reached the open fails rather
-/// than quietly producing an empty database elsewhere. Second, nothing is substituted silently — a
+/// than quietly producing an empty database elsewhere. Second, nothing is substituted silently - a
 /// fallback is logged, a non-persistent fallback needs an explicit opt-in, and total failure reports
 /// every candidate's fate.
 /// </para>

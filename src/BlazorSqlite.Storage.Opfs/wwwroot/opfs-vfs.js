@@ -1,7 +1,7 @@
 // Registers wa-sqlite's OPFSCoopSyncVFS against the engine the worker just loaded.
 //
 // Chosen over AccessHandlePoolVFS because it allows more than one connection and leaves a real
-// inspectable file in OPFS — export is a read, not a reconstruction. The VFS itself is vendored
+// inspectable file in OPFS - export is a read, not a reconstruction. The VFS itself is vendored
 // and import-rewritten; this file is the stable register() the .NET provider points at.
 
 import { OPFSCoopSyncVFS } from './OPFSCoopSyncVFS.js';

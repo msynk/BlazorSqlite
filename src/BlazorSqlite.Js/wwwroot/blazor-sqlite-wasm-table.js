@@ -3,7 +3,7 @@
 // The vendored engine is compiled without ALLOW_TABLE_GROWTH, so the table's
 // minimum and maximum are the same (436). Emscripten's `addFunction` then cannot
 // install a JS collation callback, and `EF_DECIMAL` never exists. Patching a copy
-// at load time — not the checksummed artifact — gives `addFunction` spare slots
+// at load time - not the checksummed artifact - gives `addFunction` spare slots
 // without a from-source rebuild.
 
 const TABLE_SECTION = 4;
@@ -79,7 +79,7 @@ function patchTablePayload(payload, extraSlots) {
   offset = min.next;
 
   if (limits !== LIMITS_MIN_MAX) {
-    // Already unbounded — addFunction can grow it.
+    // Already unbounded - addFunction can grow it.
     return payload;
   }
 

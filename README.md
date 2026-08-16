@@ -45,8 +45,8 @@ live.Changed += (_, rows) => InvokeAsync(StateHasChanged);
 
 ## What this release does not claim
 
-- Arch 2 (`BlazorSqlite.Strict`) — slipped post-1.0. Browsers forbid `Atomics.wait` on the main thread; a spin-wait would freeze the UI; multithreaded WASM is not Blazor's default. See `docs/implementation-plan.md` §12 M8 notes.
-- Firefox/Safari CI — Playwright's CDN is geo-blocked here; Chrome/Edge use installed browsers. Set `BLAZORSQLITE_BROWSERS=all` after `playwright install`.
+- Arch 2 (`BlazorSqlite.Strict`) - slipped post-1.0. Browsers forbid `Atomics.wait` on the main thread; a spin-wait would freeze the UI; multithreaded WASM is not Blazor's default. See `docs/implementation-plan.md` §12 M8 notes.
+- Firefox/Safari CI - Playwright's CDN is geo-blocked here; Chrome/Edge use installed browsers. Set `BLAZORSQLITE_BROWSERS=all` after `playwright install`.
 - Soak: 4–8 tabs, mid-commit kill × 1000, and §2 latency numbers. Those are the manual benchmark suite, not CI gates.
 
 ## Tests

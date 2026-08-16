@@ -1,4 +1,4 @@
-// Block-based Cache Storage VFS. Commits rely on SQLite's journal — the Cache API has no
+// Block-based Cache Storage VFS. Commits rely on SQLite's journal - the Cache API has no
 // multi-entry atomic write, so we do not claim SQLITE_IOCAP_BATCH_ATOMIC.
 //
 // Pages are 4096-byte cache entries. Dirty pages flush on xSync. Cross-tab writers are

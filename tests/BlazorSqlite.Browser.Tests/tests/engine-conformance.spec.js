@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { exec, executeExpectingFailure, openHost, query } from './host.js';
 
 /**
- * The engine-layer rules, run against the worker's built-in memory VFS — the InMemory provider's
+ * The engine-layer rules, run against the worker's built-in memory VFS - the InMemory provider's
  * actual engine path. The C# kit runs the same rules against the in-process transport; a divergence
  * between the two is a bug in one of them.
  */

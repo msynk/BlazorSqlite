@@ -7,7 +7,7 @@ namespace BlazorSqlite.Storage;
 [Flags]
 public enum BlazorSqliteExecutionContexts
 {
-    /// <summary>No context — a backend declaring this can never be selected.</summary>
+    /// <summary>No context - a backend declaring this can never be selected.</summary>
     None = 0,
 
     /// <summary>The main document thread.</summary>

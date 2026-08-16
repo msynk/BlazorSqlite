@@ -29,7 +29,7 @@ function readTableLimits(bytes) {
 
     if (id === 4) {
       const payload = bytes.subarray(offset, offset + size);
-      // count=1, funcref, limits=1, min, max — all LEB after the two tag bytes.
+      // count=1, funcref, limits=1, min, max - all LEB after the two tag bytes.
       let i = 0;
       const skipLeb = () => {
         let n = 0;

@@ -197,7 +197,7 @@ public sealed class StorageProviderResolverTests
 
         /// <summary>
         /// Choosing volatile storage outright is a decision the application already made, so it needs
-        /// no second opt-in — the guard exists for silent downgrades, not deliberate ones.
+        /// no second opt-in - the guard exists for silent downgrades, not deliberate ones.
         /// </summary>
         [Fact]
         public async Task IsAllowed_AsAnExplicitFirstChoice()

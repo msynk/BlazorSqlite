@@ -28,7 +28,7 @@ export async function open({ databaseName, requiredBuild, vfs, limits, workerUrl
  * Creates a host without opening a database.
  *
  * Exists for the .NET transport: Blazor can hold an <c>IJSObjectReference</c> to the host and then
- * drive every operation — including open — through <c>call</c>, so a failure never has to throw
+ * drive every operation - including open - through <c>call</c>, so a failure never has to throw
  * across the interop boundary.
  *
  * @param {string} [workerUrl]
@@ -130,7 +130,7 @@ class SqliteHost {
    * Runs any worker request and returns the outcome as data rather than by throwing.
    *
    * This exists for .NET callers, and the reason is a hard limit rather than a preference: Blazor's JS
-   * interop reduces a thrown JavaScript error to its message, so the SQLite result code would be lost —
+   * interop reduces a thrown JavaScript error to its message, so the SQLite result code would be lost -
    * and that code is how EF tells a unique-constraint violation from a busy database. An envelope keeps
    * it.
    */

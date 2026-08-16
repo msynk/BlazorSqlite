@@ -2,7 +2,7 @@ namespace BlazorSqlite.Data;
 
 /// <summary>
 /// Executes SQLite work on behalf of the ADO.NET layer. Implementations decide where the engine
-/// actually lives — a web worker, an in-process engine, or a test double.
+/// actually lives - a web worker, an in-process engine, or a test double.
 /// </summary>
 /// <remarks>
 /// The contract is deliberately coarse: one round trip per command batch, because in the browser
@@ -15,7 +15,7 @@ public interface ISqliteTransport : IAsyncDisposable
 
     /// <summary>
     /// Releases the database handle. Called by whoever owns the transport, not by
-    /// <see cref="BlazorSqliteConnection"/> — see its <c>Close</c> documentation for why.
+    /// <see cref="BlazorSqliteConnection"/> - see its <c>Close</c> documentation for why.
     /// </summary>
     Task CloseAsync(CancellationToken cancellationToken = default);
 
@@ -66,7 +66,7 @@ public sealed record SqliteCommandResult
     /// fixable: the vendored engine is built with <c>SQLITE_OMIT_DECLTYPE</c>, so declared types do not
     /// exist in it at all and the worker reports the storage class of the first row instead. The
     /// in-process transport reports true declared types, so it is the more generous of the two here.
-    /// EF Core is unaffected — it materializes from the model, not from this — but a caller reading
+    /// EF Core is unaffected - it materializes from the model, not from this - but a caller reading
     /// <c>GetDataTypeName</c> directly should expect <c>TEXT</c> where a server would say
     /// <c>decimal(18,2)</c>.
     /// </remarks>

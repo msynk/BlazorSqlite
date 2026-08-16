@@ -7,8 +7,8 @@ namespace BlazorSqlite.Interop;
 /// and the resolution that explains why this backend was chosen.
 /// </summary>
 /// <remarks>
-/// The session owns the transport. The connection's <c>Close</c> is bookkeeping only — see
-/// <see cref="BlazorSqliteConnection.Close"/> — so disposing the session is what actually tears
+/// The session owns the transport. The connection's <c>Close</c> is bookkeeping only - see
+/// <see cref="BlazorSqliteConnection.Close"/> - so disposing the session is what actually tears
 /// the worker down.
 /// </remarks>
 public sealed class BlazorSqliteSession : IAsyncDisposable

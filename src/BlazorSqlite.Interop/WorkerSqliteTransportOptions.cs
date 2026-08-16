@@ -7,7 +7,7 @@ namespace BlazorSqlite.Interop;
 /// </summary>
 /// <remarks>
 /// The transport does not resolve storage itself: selection happens first, and this carries the
-/// outcome — which engine build the chosen backend needs, and which VFS module to register. That
+/// outcome - which engine build the chosen backend needs, and which VFS module to register. That
 /// keeps the worker host ignorant of preference, sticky binding, and fallback.
 /// </remarks>
 public sealed class WorkerSqliteTransportOptions

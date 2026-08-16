@@ -81,7 +81,7 @@ export async function exec(page, commandText, parameters = []) {
  * Runs a batch expected to fail, returning the error as data.
  *
  * Written as a captured rejection rather than a Playwright `rejects` matcher so the SQLite result code
- * survives the boundary — a test asserting only on the message would pass for the wrong error.
+ * survives the boundary - a test asserting only on the message would pass for the wrong error.
  */
 export function executeExpectingFailure(page, batch) {
   return page.evaluate(async batch => {

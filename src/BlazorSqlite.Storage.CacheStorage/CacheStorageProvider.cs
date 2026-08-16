@@ -8,7 +8,7 @@ namespace BlazorSqlite.Storage.CacheStorage;
 /// </summary>
 /// <remarks>
 /// Built against the frozen storage contract with no core changes. Batch-atomic writes are not
-/// offered — the Cache API cannot commit several entries as one. A database left behind by besql
+/// offered - the Cache API cannot commit several entries as one. A database left behind by besql
 /// is imported losslessly on first open.
 /// </remarks>
 public sealed class CacheStorageProvider : IBlazorSqliteStorageProvider

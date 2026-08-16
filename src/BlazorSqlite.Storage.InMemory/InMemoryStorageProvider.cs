@@ -63,7 +63,7 @@ public sealed class InMemoryStorageProvider : IBlazorSqliteStorageProvider
     public IBlazorSqliteStorageAdmin Admin => _admin;
 
     /// <inheritdoc />
-    /// <remarks>Always available — there is no browser capability to depend on.</remarks>
+    /// <remarks>Always available - there is no browser capability to depend on.</remarks>
     public ValueTask<BlazorSqliteProbeResult> ProbeAsync(CancellationToken cancellationToken = default)
         => ValueTask.FromResult(BlazorSqliteProbeResult.Available(
             environment: new Dictionary<string, string>(StringComparer.Ordinal)

@@ -1,6 +1,6 @@
 // Registers wa-sqlite's IDBBatchAtomicVFS against the engine the worker just loaded.
 //
-// This VFS suspends on every I/O, so it cannot run on the synchronous build — the provider
+// This VFS suspends on every I/O, so it cannot run on the synchronous build - the provider
 // declares AsyncCapable and the loader picks JSPI or Asyncify. cache_size is set on open so
 // batch-atomic writes can keep the journal in cache, which is the main IndexedDB performance win.
 
