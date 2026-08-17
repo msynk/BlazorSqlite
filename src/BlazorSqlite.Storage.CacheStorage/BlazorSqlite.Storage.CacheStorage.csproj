@@ -5,6 +5,8 @@
       Cache Storage for BlazorSqlite. Block-based, journal-committed, and the besql migration path.
     </Description>
     <AddRazorSupportForMvc>false</AddRazorSupportForMvc>
+
+    <PackageTags>$(PackageTags);cache-storage;besql;storage;migration</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

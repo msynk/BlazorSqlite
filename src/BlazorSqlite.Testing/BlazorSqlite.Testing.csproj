@@ -6,6 +6,8 @@
       the stack can be unit-tested without a browser, and the conformance kit every storage provider
       must pass - inherit the test classes in your provider's test project and supply your provider.
     </Description>
+
+    <PackageTags>$(PackageTags);testing;xunit;conformance;test-kit</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

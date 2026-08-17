@@ -6,6 +6,8 @@
       worker-only, no COOP/COEP.
     </Description>
     <AddRazorSupportForMvc>false</AddRazorSupportForMvc>
+
+    <PackageTags>$(PackageTags);opfs;origin-private-file-system;storage</PackageTags>
   </PropertyGroup>
 
   <Import Project="vfs\wa-sqlite.lock.props" />

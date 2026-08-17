@@ -17,7 +17,37 @@
     <Authors>BlazorSqlite</Authors>
     <Product>BlazorSqlite</Product>
     <VersionPrefix>0.1.0</VersionPrefix>
+    <Copyright>Copyright (c) BlazorSqlite contributors</Copyright>
+
+    <!-- Every package is MIT, same as wa-sqlite, whose LICENSE ships alongside the engine bytes it
+         covers under _content/BlazorSqlite/engine. -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+
+    <PackageProjectUrl>https://github.com/msynk/BlazorSqlite</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/msynk/BlazorSqlite.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <PackageTags>blazor;blazor-webassembly;webassembly;wasm;sqlite;browser;offline;client-side</PackageTags>
+
     <PackageReadmeFile Condition="Exists('$(MSBuildProjectDirectory)/README.md')">README.md</PackageReadmeFile>
+
+    <!-- Symbols as .snupkg so the symbol server can serve them; sources are located through the
+         SourceLink support built into the SDK, which needs no package reference. -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+
+    <!-- Normalizes paths baked into the assembly. Only correct on a build from a clean checkout,
+         so it is opt-in via the CI variable rather than on for local builds. -->
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <PackageOutputPath>$(MSBuildThisFileDirectory)artifacts/packages</PackageOutputPath>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsPackable)' != 'false' And Exists('$(MSBuildProjectDirectory)/README.md')">
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>

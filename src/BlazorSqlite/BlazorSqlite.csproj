@@ -11,6 +11,8 @@
 
     <!-- Static assets only; no Razor components, so no need to scan for them. -->
     <AddRazorSupportForMvc>false</AddRazorSupportForMvc>
+
+    <PackageTags>$(PackageTags);efcore;entity-framework-core;ado-net;live-query</PackageTags>
   </PropertyGroup>
 
   <Import Project="engine\wa-sqlite.lock.props" />

@@ -6,6 +6,8 @@
       async-capable (JSPI or Asyncify), works where OPFS does not.
     </Description>
     <AddRazorSupportForMvc>false</AddRazorSupportForMvc>
+
+    <PackageTags>$(PackageTags);indexeddb;idb;storage</PackageTags>
   </PropertyGroup>
 
   <Import Project="vfs\wa-sqlite.lock.props" />

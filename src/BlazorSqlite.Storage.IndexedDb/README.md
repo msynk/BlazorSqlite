@@ -1,0 +1,39 @@
+# BlazorSqlite.Storage.IndexedDb
+
+IndexedDB storage for [BlazorSqlite](https://www.nuget.org/packages/BlazorSqlite), backed by
+wa-sqlite's `IDBBatchAtomicVFS`.
+
+This is the backend that reaches browsers OPFS does not, and the only one that can run outside a
+dedicated worker. Use it as the fallback behind OPFS, or on its own when reach matters more than
+download size.
+
+## Install
+
+```
+dotnet add package BlazorSqlite.Storage.IndexedDb
+```
+
+```csharp
+new IndexedDbStorageProvider(jsRuntime)   // ProviderName == "indexeddb"
+```
+
+## Capabilities
+
+| | |
+|---|---|
+| Engine build | Async-capable — JSPI where available, Asyncify otherwise |
+| Persistent | Yes |
+| Multiple connections | Yes |
+| Concurrent reads | Yes |
+| Relaxed durability | Yes |
+| Page size changeable | No |
+| Execution contexts | Dedicated worker, window, shared worker, service worker |
+
+The page-size limit is declared, not documented-and-hoped: the core reads `Capabilities` and rejects
+a `PRAGMA page_size` that the backend cannot honour, rather than letting it be silently ignored.
+
+**On download size:** the engine build is picked at runtime from the selected provider plus a JSPI
+probe. JSPI costs about 0.9% over the synchronous build; Asyncify costs about 107%. Browsers with
+JSPI pay almost nothing for this backend.
+
+MIT. Part of [BlazorSqlite](https://github.com/msynk/BlazorSqlite).

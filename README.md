@@ -61,3 +61,30 @@ Browser: `npx playwright test --project=chrome` from `tests/BlazorSqlite.Browser
 ## Benchmarks
 
 Open `tests/BlazorSqlite.Benchmarks` with the Playwright test server (or any static host that maps `/_content/...` the same way). Manual, not a CI gate.
+
+## Packing
+
+```
+dotnet pack -c Release
+```
+
+Packages and symbols land in `artifacts/packages` (gitignored). Only the five `src/` projects are packable; tests and samples set `IsPackable=false`.
+
+Shared metadata - licence, project and repository URLs, tags, readme wiring, `.snupkg` symbols - lives in the `Packaging` group of `Directory.Build.props`. Each package carries its own `README.md` from its project folder, which is what nuget.org renders.
+
+Version comes from `VersionPrefix` in `Directory.Build.props`. Override per build rather than editing it for a one-off:
+
+```
+dotnet pack -c Release -p:VersionPrefix=0.2.0
+dotnet pack -c Release --version-suffix preview.1     # 0.1.0-preview.1
+```
+
+Set `CI=true` on the build agent. That turns on `ContinuousIntegrationBuild`, which normalises the paths baked into the assemblies; it is deliberately off locally, where it would be wrong. Source stepping works through the SourceLink support built into the SDK - no package reference - so the repository URL and commit are stamped into the nuspec automatically.
+
+Publishing:
+
+```
+dotnet nuget push "artifacts/packages/*.nupkg" -s https://api.nuget.org/v3/index.json -k <key>
+```
+
+The `.snupkg` files go along with them; nuget.org picks them up from the same push.
