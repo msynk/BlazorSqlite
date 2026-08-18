@@ -42,9 +42,11 @@ live.Changed += (_, rows) => InvokeAsync(StateHasChanged);
 
 ## What this release does not claim
 
-- Arch 2 (`BlazorSqlite.Strict`) - slipped post-1.0. Browsers forbid `Atomics.wait` on the main thread; a spin-wait would freeze the UI; multithreaded WASM is not Blazor's default. See `docs/implementation-plan.md` §12 M8 notes.
-- Firefox/Safari CI - Playwright's CDN is geo-blocked here; Chrome/Edge use installed browsers. Set `BLAZORSQLITE_BROWSERS=all` after `playwright install`.
-- Soak: 4–8 tabs, mid-commit kill × 1000, and §2 latency numbers. Those are the manual benchmark suite, not CI gates.
+- Arch 2 (`BlazorSqlite.Strict`) - slipped post-1.0. Browsers forbid `Atomics.wait` on the main thread; a spin-wait would freeze the UI; multithreaded WASM is not Blazor's default.
+- Firefox/Safari locally - Playwright's CDN has been geo-blocked here; Chrome/Edge use installed browsers instead. Set `BLAZORSQLITE_BROWSERS=all` after `playwright install` to add the other two. CI runs all four.
+- Soak and §2 latency numbers are not CI gates. The soak suite exists (`npm run soak`) but is opt-in; the benchmark numbers are still a manual read.
+- `in-memory` has no admin view of live data. It registers no VFS, so a database opened on it lives in the engine's own heap inside the worker; `Admin` describes only images passed to it directly. Export, list, and migration away from this backend do not see what a connection wrote. Persistent backends do not have this gap.
+- `indexeddb` serializes readers. `IDBBatchAtomicVFS` is registered with `WebLocksMixin`'s default `exclusive` lock policy, so a read holds the same lock a write does. `SupportsConcurrentReads` reports that honestly.
 
 ## Tests
 
@@ -56,7 +58,17 @@ Do not rely on `dotnet test` (MTP has reported “Zero tests ran”). Run the te
 ./tests/BlazorSqlite.EntityFrameworkCore.Tests/bin/Debug/net10.0/BlazorSqlite.EntityFrameworkCore.Tests.exe
 ```
 
-Browser: `npx playwright test --project=chrome` from `tests/BlazorSqlite.Browser.Tests`.
+Browser: `npx playwright test --project=chrome` from `tests/BlazorSqlite.Browser.Tests`. `npm run test:all` adds Firefox and WebKit, which need `npm run install-browsers` first. `BLAZORSQLITE_TEST_PORT` moves the test server off 5199 when something else holds it.
+
+JavaScript units: `node --test "tests/BlazorSqlite.Js.Tests/*.test.js"`.
+
+## Soak
+
+`npm run soak` from `tests/BlazorSqlite.Browser.Tests`. Tagged `@soak` and skipped by an ordinary run, since it takes minutes: per storage, a worker killed mid-transaction 1000 times, and 4 then 8 tabs committing at once. Each ends on `PRAGMA integrity_check`, so a corrupt file fails the test rather than the next run. Sizes tune through `BLAZORSQLITE_SOAK_KILLS`, `BLAZORSQLITE_SOAK_TABS`, and `BLAZORSQLITE_SOAK_ROWS`.
+
+## CI
+
+`.github/workflows/ci.yml` runs on pushes and pull requests to `main`: the three test executables on Linux and Windows, the JavaScript units, and the browser suite across Chrome, Edge, Firefox, and WebKit. A green run then packs and uploads the five packages as build artifacts. Soak and benchmarks stay manual.
 
 ## Benchmarks
 

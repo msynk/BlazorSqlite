@@ -6,7 +6,7 @@
 // overlapping requests queue rather than interleave.
 
 import { loadEngine } from './blazor-sqlite-engine.js';
-import { registerFunctions } from './blazor-sqlite-functions.js';
+import { registerFunctions, resetAggregateState } from './blazor-sqlite-functions.js';
 import { decodeParameter, encodeRow } from './blazor-sqlite-wire.js';
 import * as SQLite from './engine/sqlite-api.js';
 
@@ -21,14 +21,19 @@ self.addEventListener('message', event => {
   const request = event.data;
   const port = event.ports?.[0] ?? self;
 
-  queue = queue.then(async () => {
+  const run = async () => {
     try {
       const result = await dispatch(request);
       port.postMessage({ id: request.id, ok: true, result });
     } catch (error) {
       port.postMessage({ id: request.id, ok: false, error: describe(error) });
     }
-  });
+  };
+
+  // The chain has to survive its own failure. `then(run)` alone would skip every later request
+  // once one link rejected - and postMessage can still throw after the catch above, on a result
+  // the structured clone algorithm refuses. A wedged worker answers nothing, ever again.
+  queue = queue.then(run, run).catch(() => {});
 });
 
 /**
@@ -96,9 +101,15 @@ async function open({ databaseName, requiredBuild, vfs, limits }) {
   // every open has to - miss it and every decimal comparison, aggregate, and REGEXP is wrong.
   registerFunctions(engine.module, engine.sqlite3, db);
 
-  // Optional provider pragmas (cache_size for batch-atomic, and anything similar). Run here
-  // rather than through execute() so a guard meant for application SQL cannot block them.
-  for (const sql of engine.onOpenSql ?? []) {
+  // SQLite defaults foreign keys OFF, and Microsoft.Data.Sqlite turns them ON for every connection
+  // it opens. We are not one, so without this the same model enforces its relationships on the
+  // server and silently does not in the browser: an orphaned row inserts cleanly here and is
+  // rejected there, and ON DELETE CASCADE never fires. Product-wide rather than a provider pragma,
+  // and still overridable - EF's own table-rebuild migrations toggle it off and back on.
+  const onOpenSql = ['PRAGMA foreign_keys=ON', ...(engine.onOpenSql ?? [])];
+
+  // Run here rather than through execute() so a guard meant for application SQL cannot block them.
+  for (const sql of onOpenSql) {
     for await (const stmt of engine.sqlite3.statements(db, sql)) {
       while (await engine.sqlite3.step(stmt) === SQLite.SQLITE_ROW) {
         // Drained: these statements are configuration, not queries.
@@ -160,25 +171,31 @@ async function executeOne(sqlite3, db, request) {
   let recordsAffected = 0;
   let captured = false;
 
-  for await (const stmt of sqlite3.statements(db, request.commandText)) {
-    bind(sqlite3, stmt, request.parameters ?? []);
+  try {
+    for await (const stmt of sqlite3.statements(db, request.commandText)) {
+      bind(sqlite3, stmt, request.parameters ?? []);
 
-    const producesRows = sqlite3.column_count(stmt) > 0;
+      const producesRows = sqlite3.column_count(stmt) > 0;
 
-    // Rows are taken from the first statement that produces any, and later statements still run.
-    // This is what EF's insert-then-select pattern needs: the INSERT reports its changes and the
-    // following SELECT is the result set the reader consumes.
-    if (wantsRows && producesRows && !captured) {
-      captured = true;
-      columnNames = sqlite3.column_names(stmt);
-      ({ rows, columnTypes } = await readRows(sqlite3, stmt, columnNames.length, request.resultKind));
-    } else {
-      while (await sqlite3.step(stmt) === SQLite.SQLITE_ROW) {
-        // Drained deliberately: a statement whose rows nobody asked for still has to run.
+      // Rows are taken from the first statement that produces any, and later statements still run.
+      // This is what EF's insert-then-select pattern needs: the INSERT reports its changes and the
+      // following SELECT is the result set the reader consumes.
+      if (wantsRows && producesRows && !captured) {
+        captured = true;
+        columnNames = sqlite3.column_names(stmt);
+        ({ rows, columnTypes } = await readRows(sqlite3, stmt, columnNames.length, request.resultKind));
+      } else {
+        while (await sqlite3.step(stmt) === SQLite.SQLITE_ROW) {
+          // Drained deliberately: a statement whose rows nobody asked for still has to run.
+        }
       }
-    }
 
-    recordsAffected += sqlite3.changes(db);
+      recordsAffected += sqlite3.changes(db);
+    }
+  } finally {
+    // Aggregate state is keyed by an address SQLite frees with the statement and reuses, so it is
+    // dropped at the statement boundary rather than left to the final callbacks to clean up.
+    resetAggregateState();
   }
 
   return { columnNames, columnTypes, rows, recordsAffected };
@@ -207,8 +224,10 @@ function notifyIfWrite(batch) {
   });
 }
 
+// Every statement, not just the first: a batch is routinely `BEGIN; INSERT …; COMMIT;`, and looking
+// only at the leading keyword would call that a read. Mirrors SqliteTableNames.LooksLikeWrite.
 function looksLikeWrite(sql) {
-  return typeof sql === 'string' && /^\s*(?:insert|update|delete|replace|create|drop|alter)\b/i.test(sql);
+  return typeof sql === 'string' && /(?:^|;)\s*(?:insert|update|delete|replace|create|drop|alter)\b/i.test(sql);
 }
 
 function extractTables(sql) {

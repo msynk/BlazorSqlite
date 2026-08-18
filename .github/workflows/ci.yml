@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same branch makes the older run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  # The three xunit.v3 projects are Microsoft.Testing.Platform executables, so they are launched as
+  # applications rather than through `dotnet test`, which has reported "Zero tests ran" against them.
+  dotnet:
+    name: .NET tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore BlazorSqlite.slnx
+
+      # Builds the samples too, including the Blazor WebAssembly client: a break there is a break in
+      # the public composition story even when the libraries still compile.
+      - name: Build
+        run: dotnet build BlazorSqlite.slnx -c Release --no-restore
+
+      - name: Storage tests
+        run: dotnet run --project tests/BlazorSqlite.Storage.Tests -c Release --no-build
+
+      - name: Interop tests
+        run: dotnet run --project tests/BlazorSqlite.Interop.Tests -c Release --no-build
+
+      - name: EF Core tests
+        run: dotnet run --project tests/BlazorSqlite.EntityFrameworkCore.Tests -c Release --no-build
+
+  js:
+    name: JavaScript unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      # node:test only, no dependencies. The directory has no package.json, so the files are passed
+      # as a glob rather than as a directory.
+      - name: Run
+        run: node --test "tests/BlazorSqlite.Js.Tests/*.test.js"
+
+  browser:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tests/BlazorSqlite.Browser.Tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: tests/BlazorSqlite.Browser.Tests/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Chrome and Edge come from the runner image, which is what the `chrome` and `msedge` channels
+      # in playwright.config.js expect. Firefox and WebKit have no installed equivalent and are
+      # downloaded here; unlike a developer machine behind a blocked CDN, the runner can reach it.
+      - name: Install Firefox and WebKit
+        run: npx playwright install --with-deps firefox webkit
+
+      # The test server serves the library assets straight out of src/*/wwwroot, so no .NET build is
+      # needed for this job.
+      - name: Run
+        run: npx playwright test
+        env:
+          BLAZORSQLITE_BROWSERS: all
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/BlazorSqlite.Browser.Tests/playwright-report
+          retention-days: 7
+
+  pack:
+    name: Pack
+    runs-on: ubuntu-latest
+    needs: [dotnet, js, browser]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # SourceLink stamps the commit into the nuspec; a shallow clone is enough for that, but the
+          # full history keeps `git describe`-style tooling honest if it is added later.
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # CI=true is set by GitHub, which turns on ContinuousIntegrationBuild and normalises the paths
+      # baked into the assemblies.
+      - name: Pack
+        run: dotnet pack BlazorSqlite.slnx -c Release
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.snupkg
+          retention-days: 14

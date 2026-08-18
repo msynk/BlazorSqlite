@@ -29,7 +29,23 @@ public sealed class WorkerSqliteTransport : ISqliteTransport
     private readonly WorkerSqliteTransportOptions _options;
     private IJSObjectReference? _module;
     private IJSObjectReference? _host;
+    private DotNetObjectReference<WorkerSqliteTransport>? _self;
     private bool _disposed;
+
+    /// <inheritdoc />
+    public event EventHandler<SqliteTablesChangedEventArgs>? TablesChanged;
+
+    /// <summary>
+    /// Called from <c>blazor-sqlite-host.js</c> when another tab reports a write to this database.
+    /// </summary>
+    /// <remarks>
+    /// Public because <c>[JSInvokable]</c> requires it. The host module has already dropped this
+    /// transport's own writes and other databases' traffic, so everything arriving here is a remote
+    /// write to the database this transport opened.
+    /// </remarks>
+    [JSInvokable]
+    public void OnTablesChanged(string[] tables)
+        => TablesChanged?.Invoke(this, new SqliteTablesChangedEventArgs(tables ?? []));
 
     public WorkerSqliteTransport(IJSRuntime js, WorkerSqliteTransportOptions options)
     {
@@ -54,6 +70,16 @@ public sealed class WorkerSqliteTransport : ISqliteTransport
         _host ??= await _module
             .InvokeAsync<IJSObjectReference>("createHost", cancellationToken, _options.WorkerUrl)
             .ConfigureAwait(false);
+
+        if (_self is null)
+        {
+            // Before the open, so a write another tab performs while this one is still opening is
+            // not missed.
+            _self = DotNetObjectReference.Create(this);
+            await _module
+                .InvokeVoidAsync("listen", cancellationToken, _host, _self, databaseName)
+                .ConfigureAwait(false);
+        }
 
         await CallAsync(
             new
@@ -137,6 +163,11 @@ public sealed class WorkerSqliteTransport : ISqliteTransport
             await _module.DisposeAsync().ConfigureAwait(false);
             _module = null;
         }
+
+        // After the host, so no notification can arrive for a reference that is already gone.
+        _self?.Dispose();
+        _self = null;
+        TablesChanged = null;
     }
 
     private async Task<JsonElement> CallAsync(object request, CancellationToken cancellationToken)

@@ -120,9 +120,43 @@ public sealed class SqliteWireFormatTests
         Assert.Equal((SqliteWireFormat.TypeCode.Null, (object?)null), SqliteWireFormat.EncodeValue(DBNull.Value, "p"));
         Assert.Equal((SqliteWireFormat.TypeCode.Integer, 1L), SqliteWireFormat.EncodeValue(true, "p"));
         Assert.Equal((SqliteWireFormat.TypeCode.Integer, 0L), SqliteWireFormat.EncodeValue(false, "p"));
-        Assert.Equal((SqliteWireFormat.TypeCode.Text, "1.250"), SqliteWireFormat.EncodeValue(1.250m, "p"));
+        Assert.Equal((SqliteWireFormat.TypeCode.Text, "1.25"), SqliteWireFormat.EncodeValue(1.250m, "p"));
         Assert.Equal((SqliteWireFormat.TypeCode.Text, "hi"), SqliteWireFormat.EncodeValue("hi", "p"));
         Assert.Equal((SqliteWireFormat.TypeCode.Real, 1.5d), SqliteWireFormat.EncodeValue(1.5d, "p"));
+    }
+
+    /// <summary>
+    /// The oracle is Microsoft.Data.Sqlite: whatever it would have stored for a decimal parameter is
+    /// what the worker has to store, or a database written in the browser stops matching one written
+    /// on the server - and EF's decimal equality, which is a plain TEXT comparison against a literal
+    /// in this same form, starts returning nothing.
+    /// </summary>
+    [Theory]
+    [InlineData("10", "10.0")]
+    [InlineData("1.50", "1.5")]
+    [InlineData("100.000", "100.0")]
+    [InlineData("0", "0.0")]
+    [InlineData("-3", "-3.0")]
+    [InlineData("12.34", "12.34")]
+    [InlineData("0.3333333333333333333333333333", "0.3333333333333333333333333333")]
+    public void ADecimal_TravelsInMicrosoftDataSqlitesCanonicalTextForm(string clr, string expected)
+    {
+        var value = decimal.Parse(clr, CultureInfo.InvariantCulture);
+
+        Assert.Equal((SqliteWireFormat.TypeCode.Text, expected), SqliteWireFormat.EncodeValue(value, "p"));
+        Assert.Equal(expected, StoredByMicrosoftDataSqlite(value));
+    }
+
+    /// <summary>What Microsoft.Data.Sqlite actually writes for a decimal parameter.</summary>
+    private static string StoredByMicrosoftDataSqlite(decimal value)
+    {
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT @v";
+        command.Parameters.AddWithValue("@v", value);
+        return (string)command.ExecuteScalar()!;
     }
 
     [Fact]
@@ -137,6 +171,25 @@ public sealed class SqliteWireFormatTests
         Assert.Contains("id", guid.Message);
         Assert.Contains("ADO.NET binder", date.Message);
     }
+
+    /// <summary>
+    /// A reply that does not match the format is a wire problem and is reported as one, rather than
+    /// as whatever <c>System.Text.Json</c> happens to raise when a property is missing or the wrong
+    /// kind.
+    /// </summary>
+    [Theory]
+    [InlineData("""{ "result": 1 }""")]
+    [InlineData("""{ "ok": "yes", "result": 1 }""")]
+    [InlineData("[]")]
+    public void DecodeCall_ReportsAMalformedEnvelope_AsAFormatException(string json)
+        => Assert.Throws<FormatException>(() => SqliteWireFormat.DecodeCall(Parse(json)));
+
+    [Theory]
+    [InlineData("""[{ "rows": [{ "v": [1] }] }]""")]
+    [InlineData("""[{ "rows": [{ "t": 1, "v": [1] }] }]""")]
+    [InlineData("""[{ "rows": [{ "t": [1, 3], "v": [1] }] }]""")]
+    public void DecodeResults_ReportsAMalformedRow_AsAFormatException(string json)
+        => Assert.Throws<FormatException>(() => SqliteWireFormat.DecodeResults(Parse(json)));
 
     [Fact]
     public void AnUnsignedIntegerPastInt64_IsRejectedRatherThanWrapped()

@@ -7,8 +7,9 @@ namespace BlazorSqlite.Storage.InMemory;
 /// Tracks the in-memory backend's databases and their file images.
 /// </summary>
 /// <remarks>
-/// Export and import are real, even though the databases are volatile: they are what lets a session's
-/// work be saved off, and what a migration away from this backend copies.
+/// Export and import are real against this store, but the store is not the engine's. The backend
+/// registers no VFS, so a database opened through a connection lives in SQLite's built-in memory
+/// VFS inside the worker and never appears here. See <see cref="InMemoryStorageProvider"/>.
 /// </remarks>
 internal sealed class InMemoryStorageAdmin : IBlazorSqliteStorageAdmin
 {

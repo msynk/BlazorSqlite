@@ -21,7 +21,11 @@ public sealed class IndexedDbStorageProviderTests
         Assert.Equal(BlazorSqliteEngineBuild.AsyncCapable, capabilities.RequiredBuild);
         Assert.True(capabilities.IsPersistent);
         Assert.True(capabilities.SupportsMultipleConnections);
-        Assert.True(capabilities.SupportsConcurrentReads);
+
+        // idb-vfs.js registers the VFS without a lock policy, so WebLocksMixin's 'exclusive'
+        // default applies and reads serialize behind each other like writes do.
+        Assert.False(capabilities.SupportsConcurrentReads);
+
         Assert.True(capabilities.SupportsRelaxedDurability);
         Assert.True(capabilities.SupportsMultiDatabaseTransactions);
         Assert.False(capabilities.CanChangePageSize);

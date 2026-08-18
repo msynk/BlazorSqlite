@@ -20,6 +20,22 @@ const collationPointers = new WeakMap();
 const aggregateState = new Map();
 
 /**
+ * Forgets any aggregate state left behind by the statement that just finished.
+ *
+ * Entries normally remove themselves in the final callback, and on the current engine that callback
+ * appears to run even for a grouped query abandoned after one row or one that fails mid-step. This
+ * does not depend on that. The key is a heap address SQLite frees with the statement and is free to
+ * hand out again, so an entry that ever did outlive its statement would look to
+ * `getAggregateState` like an accumulator already in progress - and the next `ef_sum` landing on
+ * that address would continue someone else's total rather than start at zero, with no error. State
+ * is only meaningful within one statement, so dropping it between them costs nothing and removes
+ * the possibility.
+ */
+export function resetAggregateState() {
+  aggregateState.clear();
+}
+
+/**
  * Installs `ef_*`, `EF_DECIMAL`, and `regexp` on an open database.
  *
  * @param {object} module the Emscripten module, needed for collation and aggregate context
@@ -48,7 +64,7 @@ export function registerFunctions(module, sqlite3, db) {
         return;
       }
 
-      sqlite3.result(ctx, apply(left, right).toString());
+      sqlite3.result(ctx, apply(left, right).toSqlText());
     });
   };
 
@@ -65,7 +81,7 @@ export function registerFunctions(module, sqlite3, db) {
       return;
     }
 
-    sqlite3.result(ctx, left.divide(right).toString());
+    sqlite3.result(ctx, left.divide(right).toSqlText());
   }));
 
   sqlite3.create_function(db, 'ef_mod', 2, flags, 0, guarded(module, (ctx, values) => {
@@ -76,12 +92,12 @@ export function registerFunctions(module, sqlite3, db) {
       return;
     }
 
-    sqlite3.result(ctx, left.remainder(right).toString());
+    sqlite3.result(ctx, left.remainder(right).toSqlText());
   }));
 
   scalar('ef_negate', 1, (ctx, values) => {
     const value = readDecimal(sqlite3, values[0]);
-    sqlite3.result(ctx, value === null ? null : value.negate().toString());
+    sqlite3.result(ctx, value === null ? null : value.negate().toSqlText());
   });
 
   // A sign, not a bool: EF compiles `a > b` to `ef_compare(a, b) > 0`.
@@ -217,7 +233,7 @@ function registerAggregate(sqlite3, db, module, name, { create, step, final }) {
     guarded(module, ctx => {
       const state = takeAggregateState(module, ctx);
       const result = final(state);
-      sqlite3.result(ctx, result === null || result === undefined ? null : result.toString());
+      sqlite3.result(ctx, result === null || result === undefined ? null : result.toSqlText());
     }));
 }
 

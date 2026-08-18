@@ -23,6 +23,28 @@ public interface ISqliteTransport : IAsyncDisposable
     Task<IReadOnlyList<SqliteCommandResult>> ExecuteAsync(
         IReadOnlyList<SqliteCommandRequest> batch,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Raised when a write this transport did not perform touched tables in the same database -
+    /// in practice, a write from another tab.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="BlazorSqliteConnection"/> subscribes to this and re-raises it as
+    /// <see cref="BlazorSqliteConnection.TablesChanged"/>, which is what makes a live query re-run
+    /// for a write it did not issue. The connection raises its own writes itself, so a transport
+    /// must not report those here or every live query re-runs twice per write.
+    /// </para>
+    /// <para>
+    /// Implemented as a no-op by default: a transport with no way to hear about other writers -
+    /// the in-process one, and any test double - is still a complete transport.
+    /// </para>
+    /// </remarks>
+    event EventHandler<SqliteTablesChangedEventArgs>? TablesChanged
+    {
+        add { }
+        remove { }
+    }
 }
 
 /// <summary>A single statement plus its parameters.</summary>

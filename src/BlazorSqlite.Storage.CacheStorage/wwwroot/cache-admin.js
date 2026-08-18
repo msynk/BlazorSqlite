@@ -93,9 +93,18 @@ export async function list() {
 export async function deleteDatabase(databaseName) {
   const name = requireName(databaseName);
   const cache = await caches.open(CACHE_NAME);
-  const prefix = `/blazor-sqlite/db/${encodeURIComponent(pathOf(name))}`;
+
+  // The related files are listed rather than matched by a loose prefix. Every entry for a database
+  // is `<path>/meta` or `<path>/p/<n>`, so the prefix ends in a slash; without it, deleting
+  // `app.db` would also take `app.db2` - a different database - with it.
+  const prefixes = ['', ...RELATED_SUFFIXES]
+    .map(suffix => `/blazor-sqlite/db/${encodeURIComponent(pathOf(name + suffix))}/`);
+
   await Promise.all((await cache.keys())
-    .filter(request => new URL(request.url).pathname.startsWith(prefix))
+    .filter(request => {
+      const { pathname } = new URL(request.url);
+      return prefixes.some(prefix => pathname.startsWith(prefix));
+    })
     .map(request => cache.delete(request)));
 
   try {

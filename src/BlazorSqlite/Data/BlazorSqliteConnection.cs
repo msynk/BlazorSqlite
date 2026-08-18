@@ -17,6 +17,7 @@ public sealed class BlazorSqliteConnection : DbConnection
     private readonly ISqliteTransport _transport;
     private ConnectionState _state = ConnectionState.Closed;
     private string _database;
+    private bool _disposed;
 
     public BlazorSqliteConnection(ISqliteTransport transport, string databaseName)
     {
@@ -26,6 +27,11 @@ public sealed class BlazorSqliteConnection : DbConnection
         _transport = transport;
         _database = databaseName;
         ConnectionString = $"Data Source={databaseName}";
+
+        // A write in another tab reaches this connection only through the transport, and the
+        // subscription has to exist before the first query so a live query created immediately
+        // after opening does not miss one.
+        _transport.TablesChanged += OnTransportTablesChanged;
     }
 
     internal ISqliteTransport Transport => _transport;
@@ -44,7 +50,10 @@ public sealed class BlazorSqliteConnection : DbConnection
     /// </summary>
     public event EventHandler<SqliteTablesChangedEventArgs>? TablesChanged;
 
-    /// <summary>Used by the transport when another tab reports a write.</summary>
+    /// <summary>
+    /// Raises <see cref="TablesChanged"/> for <paramref name="tables"/>. The command layer calls
+    /// this after a local write; writes from other tabs arrive through the transport instead.
+    /// </summary>
     public void NotifyTablesChanged(IEnumerable<string> tables)
         => TablesChanged?.Invoke(this, new SqliteTablesChangedEventArgs([.. tables]));
 
@@ -136,4 +145,22 @@ public sealed class BlazorSqliteConnection : DbConnection
         var request = new SqliteCommandRequest { CommandText = sql };
         await _transport.ExecuteAsync([request], cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Unsubscribes from the transport. The transport itself is not disposed - it belongs to
+    /// whoever created it, for the reason <see cref="Close"/> explains.
+    /// </summary>
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && !_disposed)
+        {
+            _disposed = true;
+            _transport.TablesChanged -= OnTransportTablesChanged;
+        }
+
+        base.Dispose(disposing);
+    }
+
+    private void OnTransportTablesChanged(object? sender, SqliteTablesChangedEventArgs e)
+        => TablesChanged?.Invoke(this, e);
 }

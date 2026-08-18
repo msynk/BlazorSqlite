@@ -5,8 +5,10 @@
   "description": "Browser tests for the BlazorSqlite worker host, engine loader, and storage VFSes. These are the only tests that can prove the JavaScript half works, so they run against real browser engines rather than a DOM shim.",
   "scripts": {
     "test": "playwright test",
-    "test:all": "playwright test --project=chromium --project=firefox --project=webkit",
-    "install-browsers": "playwright install"
+    "test:all": "node scripts/run-playwright.js --all",
+    "soak": "node scripts/run-playwright.js --soak",
+    "soak:all": "node scripts/run-playwright.js --all --soak",
+    "install-browsers": "playwright install firefox webkit"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0"

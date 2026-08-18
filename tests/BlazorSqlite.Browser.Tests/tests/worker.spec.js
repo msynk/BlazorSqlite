@@ -6,6 +6,53 @@ test.beforeEach(async ({ page }) => {
   await exec(page, 'CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT, price REAL)');
 });
 
+/**
+ * SQLite defaults foreign keys off; Microsoft.Data.Sqlite turns them on for every connection. The
+ * worker has to do the same, or the same model enforces its relationships on the server and
+ * silently does not in the browser - which is the one difference this library exists to not have.
+ */
+test.describe('foreign keys', () => {
+  test.beforeEach(async ({ page }) => {
+    await exec(page, 'CREATE TABLE parent (id INTEGER PRIMARY KEY)');
+    await exec(page,
+      'CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id) ON DELETE CASCADE)');
+  });
+
+  test('are on, the way Microsoft.Data.Sqlite leaves them', async ({ page }) => {
+    const result = await query(page, 'PRAGMA foreign_keys');
+    expect(result.rows).toEqual([[1]]);
+  });
+
+  test('reject an orphaned row rather than storing it', async ({ page }) => {
+    const error = await executeExpectingFailure(page, [
+      { commandText: 'INSERT INTO child (id, parent_id) VALUES (1, 999)' },
+    ]);
+
+    expect(error).not.toBeNull();
+    expect(error.message).toContain('FOREIGN KEY');
+    expect(error.sqliteCode).toBe(19);
+  });
+
+  test('cascade a delete to the child rows', async ({ page }) => {
+    await exec(page, 'INSERT INTO parent (id) VALUES (1)');
+    await exec(page, 'INSERT INTO child (id, parent_id) VALUES (1, 1)');
+
+    await exec(page, 'DELETE FROM parent WHERE id = 1');
+
+    const remaining = await query(page, 'SELECT COUNT(*) FROM child');
+    expect(remaining.rows).toEqual([[0]]);
+  });
+
+  // EF's SQLite migrations rebuild tables with the pragma toggled off and back on, so it has to
+  // stay something the application can change.
+  test('can still be turned off by the application', async ({ page }) => {
+    await exec(page, 'PRAGMA foreign_keys=OFF');
+
+    expect((await query(page, 'PRAGMA foreign_keys')).rows).toEqual([[0]]);
+    await exec(page, 'INSERT INTO child (id, parent_id) VALUES (1, 999)');
+  });
+});
+
 test.describe('executing SQL', () => {
   test('round-trips a row through parameters', async ({ page }) => {
     const insert = await exec(

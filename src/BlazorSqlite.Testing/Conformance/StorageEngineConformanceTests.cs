@@ -106,6 +106,31 @@ public abstract class StorageEngineConformanceTests : IAsyncDisposable
         Assert.Equal("Kept", await command.ExecuteScalarAsync(Ct));
     }
 
+    /// <summary>
+    /// SQLite defaults foreign keys off and Microsoft.Data.Sqlite turns them on for every
+    /// connection, so a transport that leaves them off enforces a model's relationships differently
+    /// from the same model on the server - silently, and only for writes that were already wrong.
+    /// </summary>
+    [Fact]
+    public async Task ForeignKeys_AreEnforced()
+    {
+        await using var connection = await ConnectAsync();
+        await using var command = connection.CreateCommand();
+
+        command.CommandText = "PRAGMA foreign_keys";
+        Assert.Equal(1L, Convert.ToInt64(await command.ExecuteScalarAsync(Ct)));
+
+        command.CommandText = "CREATE TABLE parent (id INTEGER PRIMARY KEY)";
+        await command.ExecuteNonQueryAsync(Ct);
+
+        command.CommandText =
+            "CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id))";
+        await command.ExecuteNonQueryAsync(Ct);
+
+        command.CommandText = "INSERT INTO child (id, parent_id) VALUES (1, 999)";
+        await Assert.ThrowsAnyAsync<Exception>(() => command.ExecuteNonQueryAsync(Ct));
+    }
+
     [Fact]
     public async Task JournalModeWal_IsRejected()
     {

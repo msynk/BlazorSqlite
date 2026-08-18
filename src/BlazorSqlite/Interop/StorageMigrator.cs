@@ -8,9 +8,9 @@ namespace BlazorSqlite.Interop;
 /// looks like a SQLite file.
 /// </summary>
 /// <remarks>
-/// Probe target → quota headroom → copy → header check → flip binding → delete source.
-/// A failure leaves the source and the binding untouched. <c>PRAGMA integrity_check</c> needs an
-/// engine on the target; the header check is what we can always do, including on desktop.
+/// Probe target → source has anything → quota headroom → copy → header check → flip binding →
+/// delete source. A failure leaves the source and the binding untouched. <c>PRAGMA integrity_check</c>
+/// needs an engine on the target; the header check is what we can always do, including on desktop.
 /// </remarks>
 public sealed class StorageMigrator
 {
@@ -47,6 +47,17 @@ public sealed class StorageMigrator
                         Explanation = "The migration target is unavailable.",
                     },
                 ]);
+        }
+
+        // Nothing to move. Exporting anyway would throw - most backends report a missing database
+        // that way - and on the AutomaticOnOpen path that turns "a better backend appeared" into an
+        // open that fails outright. The in-memory backend reaches this every time: its admin store
+        // is not where a connection's data lives, so it never holds an image to copy.
+        if (!await source.Admin.ExistsAsync(databaseName, cancellationToken).ConfigureAwait(false))
+        {
+            await bindingStore.SetProviderNameAsync(databaseName, target.Name, cancellationToken)
+                .ConfigureAwait(false);
+            return;
         }
 
         var image = await source.Admin.ExportAsync(databaseName, cancellationToken).ConfigureAwait(false);

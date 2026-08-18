@@ -31,6 +31,15 @@ public static partial class SqliteTableNames
         return names;
     }
 
+    /// <summary>
+    /// Whether <paramref name="sql"/> contains a statement that writes.
+    /// </summary>
+    /// <remarks>
+    /// Every statement is considered, not just the first. A batch is routinely
+    /// <c>BEGIN; INSERT …; COMMIT;</c> or several statements EF sent together, and looking only at
+    /// the leading keyword would call all of those reads - which is a missed live-query update, the
+    /// one failure mode this heuristic is not allowed to have.
+    /// </remarks>
     public static bool LooksLikeWrite(string? sql)
         => !string.IsNullOrWhiteSpace(sql) && Write().IsMatch(sql);
 
@@ -40,7 +49,7 @@ public static partial class SqliteTableNames
     private static partial Regex TableName();
 
     [GeneratedRegex(
-        @"^\s*(?:insert|update|delete|replace|create|drop|alter)\b",
+        @"(?:^|;)\s*(?:insert|update|delete|replace|create|drop|alter)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex Write();
 }

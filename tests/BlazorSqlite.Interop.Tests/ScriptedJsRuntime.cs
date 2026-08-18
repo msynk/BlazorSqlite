@@ -62,6 +62,13 @@ internal sealed class ScriptedJsRuntime : IJSRuntime
             return ValueTask.FromResult((TValue)(object)Host);
         }
 
+        // Subscribes the transport to another tab's writes. Nothing to play back - the recorded
+        // call in Calls is what the tests assert on.
+        if (objectName == "module" && identifier == "listen")
+        {
+            return ValueTask.FromResult(default(TValue)!);
+        }
+
         if (objectName == "host" && identifier == "call")
         {
             if (_envelopes.Count == 0)

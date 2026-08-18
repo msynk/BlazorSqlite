@@ -1,9 +1,13 @@
 import { expect, test } from '@playwright/test';
-import { exec, openHost, query } from './host.js';
+import { exec, execute, executeExpectingFailure, openHost, query } from './host.js';
 
 /**
  * The S4 data set: values chosen so lexicographic TEXT order and numeric order disagree
  * (`9` vs `10`, `2.5` vs `100`), with zero, negatives, sub-unit scales, and nulls.
+ *
+ * Every `ef_*` result below is what Microsoft.Data.Sqlite returns for the same call - the oracle
+ * these functions exist to imitate - which is the canonical `0.0###########################` form
+ * and not a plain ToString. `ef_multiply('10','3')` is `'30.0'` there, so it is `'30.0'` here.
  */
 const ROWS = [
   { id: 1, value: '0', optional: null, bucket: 0, text: 'alpha' },
@@ -30,15 +34,15 @@ test.describe('scalar decimal functions', () => {
     ['subtract', "ef_add(value, ef_negate('1.5'))",
       ['-1.5', '8.5', '7.5', '-6.5', '1.0', '-1.4', '98.5', '-1.75', '1233.0678', '1.5']],
     ['multiply', "ef_multiply(value, '3')",
-      ['0', '30', '27', '-15', '7.5', '0.3', '300', '-0.75', '3703.7034', '9']],
+      ['0.0', '30.0', '27.0', '-15.0', '7.5', '0.3', '300.0', '-0.75', '3703.7034', '9.0']],
     ['divide', "ef_divide(value, '4')",
-      ['0', '2.5', '2.25', '-1.25', '0.625', '0.025', '25', '-0.0625', '308.64195', '0.75']],
+      ['0.0', '2.5', '2.25', '-1.25', '0.625', '0.025', '25.0', '-0.0625', '308.64195', '0.75']],
     ['modulo', "ef_mod(value, '3')",
-      ['0', '1', '0', '-2', '2.5', '0.1', '1', '-0.25', '1.5678', '0']],
+      ['0.0', '1.0', '0.0', '-2.0', '2.5', '0.1', '1.0', '-0.25', '1.5678', '0.0']],
     ['negate', 'ef_negate(value)',
-      ['0', '-10', '-9', '5', '-2.5', '-0.1', '-100', '0.25', '-1234.5678', '-3']],
+      ['0.0', '-10.0', '-9.0', '5.0', '-2.5', '-0.1', '-100.0', '0.25', '-1234.5678', '-3.0']],
     ['nullable add', "ef_add(optional, '1')",
-      [null, '11', null, '-4', '3.5', null, '101', '0.75', '1235.5678', '4']],
+      [null, '11.0', null, '-4.0', '3.5', null, '101.0', '0.75', '1235.5678', '4.0']],
   ];
 
   for (const [name, expr, expected] of cases) {
@@ -64,7 +68,7 @@ test.describe('aggregates', () => {
     const result = await query(page,
       'SELECT ef_sum(value), ef_avg(value), ef_max(value), ef_min(value) FROM rows');
 
-    expect(result.rows).toEqual([['1353.9178', '135.39178', '1234.5678', '-5']]);
+    expect(result.rows).toEqual([['1353.9178', '135.39178', '1234.5678', '-5.0']]);
   });
 
   test('nullable aggregates skip nulls', async ({ page }) => {
@@ -75,7 +79,7 @@ test.describe('aggregates', () => {
       '1344.8178',
       '192.11682857142857142857142857',
       '1234.5678',
-      '-5',
+      '-5.0',
     ]]);
   });
 
@@ -84,7 +88,7 @@ test.describe('aggregates', () => {
       'SELECT bucket, ef_sum(value), ef_avg(value) FROM rows GROUP BY bucket ORDER BY bucket');
 
     expect(result.rows).toEqual([
-      [0, '14', '3.5'],
+      [0, '14.0', '3.5'],
       [1, '1339.9178', '223.31963333333333333333333333'],
     ]);
   });
@@ -92,6 +96,38 @@ test.describe('aggregates', () => {
   test('an empty group yields null, not zero', async ({ page }) => {
     const result = await query(page, "SELECT ef_sum(value), ef_avg(value) FROM rows WHERE id = 0");
     expect(result.rows).toEqual([[null, null]]);
+  });
+
+  /**
+   * A scalar read abandons a grouped query after its first row, leaving the remaining groups
+   * part-way through. Aggregate state is held against the address `sqlite3_aggregate_context`
+   * returns, which SQLite frees with the statement and hands out again, so anything left behind
+   * would be read as a running total by whichever aggregate lands on that address next. These pin
+   * the behaviour that matters - a later aggregate starts from nothing - rather than the mechanism.
+   */
+  test('a grouped query abandoned after one row does not poison the next', async ({ page }) => {
+    const [abandoned] = await execute(page, [{
+      commandText: 'SELECT ef_sum(value) FROM rows GROUP BY bucket ORDER BY bucket',
+      resultKind: 'scalar',
+    }]);
+    expect(abandoned.rows).toEqual([['14.0']]);
+
+    // The same totals as a first run would produce.
+    const again = await query(page,
+      'SELECT bucket, ef_sum(value) FROM rows GROUP BY bucket ORDER BY bucket');
+    expect(again.rows).toEqual([[0, '14.0'], [1, '1339.9178']]);
+
+    const whole = await query(page, 'SELECT ef_sum(value) FROM rows');
+    expect(whole.rows).toEqual([['1353.9178']]);
+  });
+
+  test('a failing aggregate query does not poison the next', async ({ page }) => {
+    await executeExpectingFailure(page, [
+      { commandText: "SELECT ef_sum(value) FROM rows WHERE no_such_column = 1" },
+    ]);
+
+    const whole = await query(page, 'SELECT ef_sum(value) FROM rows');
+    expect(whole.rows).toEqual([['1353.9178']]);
   });
 });
 
@@ -138,13 +174,24 @@ test.describe('ordering and comparison', () => {
     });
   }
 
-  test('TEXT equality uses the stored form, so 9 equals 9 and not 9.0', async ({ page }) => {
-    // EF compiles `== 9m` to a TEXT compare against the canonical string. Getting ToString wrong
-    // would make a lookup for a value we just wrote miss.
+  test('TEXT equality is exact, which is why the stored form has to be canonical', async ({ page }) => {
+    // These rows were seeded as literal TEXT, so `value` holds '9' rather than the canonical
+    // '9.0'. SQLite's `=` does not care that they are the same number - and EF compiles `== 9m`
+    // to exactly this comparison, against a literal it renders as '9.0'. That is the whole reason
+    // decimals are written through toSqlText: a row stored in any other form is invisible to the
+    // lookup that goes looking for it.
     expect(column(await query(page, "SELECT id FROM rows WHERE value = '9'"))).toEqual([3]);
     expect(column(await query(page, "SELECT id FROM rows WHERE value = '9.0'"))).toEqual([]);
     expect(column(await query(page, "SELECT id FROM rows WHERE ef_compare(value, '9.0') = 0")))
       .toEqual([3]);
+  });
+
+  test('an ef_* result is in the canonical form EF compares against', async ({ page }) => {
+    // The failure this prevents: writing `10` where Microsoft.Data.Sqlite writes `10.0`, so
+    // `WHERE price = '10.0'` - which is what EF generates for `== 10m` - matches nothing.
+    const result = await query(page,
+      "SELECT ef_multiply('5', '2') = '10.0', ef_add('9', '1') = '10.0', ef_negate('10') = '-10.0'");
+    expect(result.rows).toEqual([[1, 1, 1]]);
   });
 });
 

@@ -19,6 +19,20 @@ test('ToString keeps the scale, including trailing zeros', () => {
   assert.equal(parse('-0').toString(), '0');
 });
 
+// The oracle is Microsoft.Data.Sqlite's `0.0###########################`, which is the form EF
+// renders decimal literals in and therefore the only form its `=` comparisons match.
+test('toSqlText writes the canonical form the SQLite stack stores', () => {
+  assert.equal(parse('10').toSqlText(), '10.0');
+  assert.equal(parse('1.50').toSqlText(), '1.5');
+  assert.equal(parse('100.000').toSqlText(), '100.0');
+  assert.equal(parse('0').toSqlText(), '0.0');
+  assert.equal(parse('-3').toSqlText(), '-3.0');
+  assert.equal(parse('12.34').toSqlText(), '12.34');
+  assert.equal(parse('-0.25').toSqlText(), '-0.25');
+  assert.equal(parse('1').divide(parse('3')).toSqlText(), '0.3333333333333333333333333333');
+  assert.equal(parse('2.5').add(parse('1.5')).toSqlText(), '4.0');
+});
+
 test('add matches the S4 oracle', () => {
   assert.deepEqual(
     map(values, v => v.add(parse('1.5'))),

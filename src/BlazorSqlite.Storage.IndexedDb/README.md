@@ -24,13 +24,18 @@ new IndexedDbStorageProvider(jsRuntime)   // ProviderName == "indexeddb"
 | Engine build | Async-capable — JSPI where available, Asyncify otherwise |
 | Persistent | Yes |
 | Multiple connections | Yes |
-| Concurrent reads | Yes |
+| Concurrent reads | No — see below |
 | Relaxed durability | Yes |
 | Page size changeable | No |
 | Execution contexts | Dedicated worker, window, shared worker, service worker |
 
 The page-size limit is declared, not documented-and-hoped: the core reads `Capabilities` and rejects
 a `PRAGMA page_size` that the backend cannot honour, rather than letting it be silently ignored.
+
+**On concurrent reads:** `IDBBatchAtomicVFS` can support them, but `idb-vfs.js` registers it without
+a lock policy, so `WebLocksMixin` applies its `exclusive` default and a read takes the same lock a
+write does. Readers therefore queue behind each other, and the capability says so. Multiple
+*connections* are still supported — they serialize rather than run in parallel.
 
 **On download size:** the engine build is picked at runtime from the selected provider plus a JSPI
 probe. JSPI costs about 0.9% over the synchronous build; Asyncify costs about 107%. Browsers with
