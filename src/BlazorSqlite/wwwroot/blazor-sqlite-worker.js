@@ -5,10 +5,28 @@
 // id, and strictly serialized - one SQLite connection cannot execute two statements at once, so
 // overlapping requests queue rather than interleave.
 
-import { loadEngine } from './blazor-sqlite-engine.js';
-import { registerFunctions, resetAggregateState } from './blazor-sqlite-functions.js';
-import { decodeParameter, encodeRow } from './blazor-sqlite-wire.js';
 import * as SQLite from './engine/sqlite-api.js';
+
+// The host spawns this worker at a URL carrying the package version, and every module below has to
+// answer to that same key. A static import would not: the browser resolves it to the bare path and
+// can satisfy it from a copy cached under an older version, which then links against this file and
+// fails - as an error event with no message, because that is all a worker that died at load can say.
+const VERSION = new URL(import.meta.url).search;
+
+// Bound through `ready` rather than by an import statement, so the message listener below is still
+// registered synchronously. The host posts `open` the instant it constructs the worker, and a
+// message that arrives before there is a listener is gone.
+let loadEngine;
+let registerFunctions;
+let resetAggregateState;
+let decodeParameter;
+let encodeRow;
+
+const ready = (async () => {
+  ({ loadEngine } = await import('./blazor-sqlite-engine.js' + VERSION));
+  ({ registerFunctions, resetAggregateState } = await import('./blazor-sqlite-functions.js' + VERSION));
+  ({ decodeParameter, encodeRow } = await import('./blazor-sqlite-wire.js' + VERSION));
+})();
 
 /** @type {{sqlite3: any, db: number, build: string, databaseName: string, limits: {supportsMultiDatabaseTransactions: boolean, canChangePageSize: boolean}} | null} */
 let session = null;
@@ -23,6 +41,7 @@ self.addEventListener('message', event => {
 
   const run = async () => {
     try {
+      await ready;
       const result = await dispatch(request);
       port.postMessage({ id: request.id, ok: true, result });
     } catch (error) {

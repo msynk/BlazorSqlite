@@ -18,7 +18,7 @@ public sealed class WorkerSqliteTransportFactory : ISqliteTransportFactory
         ArgumentNullException.ThrowIfNull(js);
 
         _js = js;
-        _hostModuleUrl = defaults?.HostModuleUrl ?? WorkerSqliteTransport.DefaultHostModuleUrl;
+        _hostModuleUrl = defaults?.HostModuleUrl ?? WorkerSqliteTransport.VersionedHostModuleUrl;
         _workerUrl = defaults?.WorkerUrl;
     }
 

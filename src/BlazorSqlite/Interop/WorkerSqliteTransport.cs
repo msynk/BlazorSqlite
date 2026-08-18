@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using BlazorSqlite.Data;
 using BlazorSqlite.Storage;
@@ -24,6 +25,19 @@ public sealed class WorkerSqliteTransport : ISqliteTransport
 {
     /// <summary>The RCL path the worker host is served from.</summary>
     public const string DefaultHostModuleUrl = "./_content/BlazorSqlite/blazor-sqlite-host.js";
+
+    /// <summary>
+    /// <see cref="DefaultHostModuleUrl"/> stamped with this assembly's version, and what a
+    /// transport imports unless an application says otherwise.
+    /// </summary>
+    /// <remarks>
+    /// The module and this assembly ship as one unit, so a browser that answers the import from a
+    /// copy it cached under an earlier version pairs new .NET with old JavaScript - which surfaces
+    /// as a missing export rather than as the version skew it is. No application can evict another
+    /// machine's module cache, so the version goes in the query instead: an upgrade then asks for a
+    /// URL no cache has an entry for.
+    /// </remarks>
+    public static string VersionedHostModuleUrl { get; } = BuildVersionedHostModuleUrl();
 
     private readonly IJSRuntime _js;
     private readonly WorkerSqliteTransportOptions _options;
@@ -75,10 +89,36 @@ public sealed class WorkerSqliteTransport : ISqliteTransport
         {
             // Before the open, so a write another tab performs while this one is still opening is
             // not missed.
-            _self = DotNetObjectReference.Create(this);
-            await _module
-                .InvokeVoidAsync("listen", cancellationToken, _host, _self, databaseName)
-                .ConfigureAwait(false);
+            var self = DotNetObjectReference.Create(this);
+            try
+            {
+                await _module
+                    .InvokeVoidAsync("listen", cancellationToken, _host, self, databaseName)
+                    .ConfigureAwait(false);
+            }
+            catch (JSException ex) when (ex.Message.Contains("is not a function", StringComparison.Ordinal))
+            {
+                // A host module without `listen` is not one this package ever shipped, so either the
+                // browser is serving a copy older than this assembly or the reference is not the
+                // module at all. Interop reports only that the export is missing, which sends the
+                // reader hunting through source that plainly exports it - so name what the object
+                // actually is. A module namespace lists its exports; anything else does not.
+                self.Dispose();
+                var exports = await DescribeAsync(_module, cancellationToken).ConfigureAwait(false);
+                throw new InvalidOperationException(
+                    $"'{_options.HostModuleUrl}' has no 'listen' export. The imported object " +
+                    $"exposes: {exports}. If 'listen' is missing from that list the browser served a " +
+                    "cached copy of the host module older than this assembly - clear the site's data " +
+                    "and reload with Ctrl+Shift+R, and check that no service worker is serving it.",
+                    ex);
+            }
+            catch
+            {
+                self.Dispose();
+                throw;
+            }
+
+            _self = self;
         }
 
         await CallAsync(
@@ -170,6 +210,28 @@ public sealed class WorkerSqliteTransport : ISqliteTransport
         TablesChanged = null;
     }
 
+    /// <summary>
+    /// Names what a JS reference actually is, for the one error where that is the whole question.
+    /// </summary>
+    private async Task<string> DescribeAsync(
+        IJSObjectReference reference,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var keys = await _js
+                .InvokeAsync<string[]>("Object.keys", cancellationToken, reference)
+                .ConfigureAwait(false);
+
+            return keys.Length == 0 ? "no enumerable members" : string.Join(", ", keys);
+        }
+        catch (JSException)
+        {
+            // The diagnostic must never replace the failure it is describing.
+            return "unknown";
+        }
+    }
+
     private async Task<JsonElement> CallAsync(object request, CancellationToken cancellationToken)
     {
         var envelope = await _host!
@@ -177,6 +239,20 @@ public sealed class WorkerSqliteTransport : ISqliteTransport
             .ConfigureAwait(false);
 
         return SqliteWireFormat.DecodeCall(envelope);
+    }
+
+    private static string BuildVersionedHostModuleUrl()
+    {
+        var assembly = typeof(WorkerSqliteTransport).Assembly;
+
+        // The informational version carries the commit for a CI build, which is a finer cache key
+        // than the three-part version a series of prereleases would share.
+        var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion ?? assembly.GetName().Version?.ToString();
+
+        return string.IsNullOrWhiteSpace(version)
+            ? DefaultHostModuleUrl
+            : $"{DefaultHostModuleUrl}?v={Uri.EscapeDataString(version)}";
     }
 
     private static string EncodeBuild(BlazorSqliteEngineBuild build) => build switch

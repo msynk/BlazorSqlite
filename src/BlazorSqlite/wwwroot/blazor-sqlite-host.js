@@ -1,11 +1,21 @@
 // The main-thread half of the transport: spawns the worker that owns a database and correlates
 // requests with responses. This is the surface the .NET transport calls.
 
-const DEFAULT_WORKER_URL = new URL('./blazor-sqlite-worker.js', import.meta.url).href;
+// Everything this module reaches for inherits the cache-busting query it was imported with, so an
+// upgrade cannot pair a fresh host with a worker - or a wire module - the browser still holds from
+// an older version.
+const VERSION = new URL(import.meta.url).search;
+
+const DEFAULT_WORKER_URL = new URL('./blazor-sqlite-worker.js' + VERSION, import.meta.url).href;
 
 // Re-exported so a JavaScript caller can work in plain values without importing the wire module and
-// without inventing a second, divergent encoding. The .NET transport does the same work in C#.
-export { decodeValue, encodeValue, WireType } from './blazor-sqlite-wire.js';
+// without inventing a second, divergent encoding. The .NET transport does the same work in C#. The
+// import is dynamic only to carry VERSION: a `export ... from` would resolve to the bare path.
+const wire = await import('./blazor-sqlite-wire.js' + VERSION);
+
+export const decodeValue = wire.decodeValue;
+export const encodeValue = wire.encodeValue;
+export const WireType = wire.WireType;
 
 /**
  * Starts a worker for one database.

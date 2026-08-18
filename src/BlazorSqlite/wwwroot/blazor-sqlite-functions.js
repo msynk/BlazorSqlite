@@ -8,7 +8,8 @@
 // would make 1/3 and 0.1 silently wrong, and EF's equality is a string compare against the canonical
 // form this module writes back.
 
-import { Decimal } from './blazor-sqlite-decimal.js';
+// Imported dynamically so this module's cache key travels with it: see the note in the worker.
+const { Decimal } = await import('./blazor-sqlite-decimal.js' + new URL(import.meta.url).search);
 import * as SQLite from './engine/sqlite-constants.js';
 
 const FUNCTION_FLAGS = SQLite.SQLITE_UTF8 | SQLite.SQLITE_DETERMINISTIC | SQLite.SQLITE_INNOCUOUS;

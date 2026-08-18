@@ -27,7 +27,13 @@ public sealed class WorkerSqliteTransportTests
         Assert.Equal(
             ["import", "module.createHost", "module.listen", "host.call"],
             js.Calls.Select(c => c.Identifier));
-        Assert.Equal(WorkerSqliteTransport.DefaultHostModuleUrl, js.Calls[0].Args[0]);
+        // Stamped, not bare: the version in the query is what keeps a browser from answering the
+        // import with a module it cached under an earlier one.
+        Assert.Equal(WorkerSqliteTransport.VersionedHostModuleUrl, js.Calls[0].Args[0]);
+        Assert.StartsWith(
+            WorkerSqliteTransport.DefaultHostModuleUrl + "?v=",
+            WorkerSqliteTransport.VersionedHostModuleUrl,
+            StringComparison.Ordinal);
 
         var request = OpenRequest(js);
         Assert.Equal("open", Read(request, "kind"));
