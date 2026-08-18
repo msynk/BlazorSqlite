@@ -37,6 +37,31 @@ export function createHost(workerUrl) {
   return new SqliteHost(workerUrl ?? DEFAULT_WORKER_URL);
 }
 
+/**
+ * Forwards another tab's writes to a .NET object, which is how a live query re-runs when the tab
+ * that wrote is not this one.
+ *
+ * Only remote writes are forwarded. The .NET command layer already raises its own writes the moment
+ * they complete, so relaying them again would re-run every live query twice per write. Writes to a
+ * different database on the same origin are dropped as well: the broadcast channel is origin-wide,
+ * so it carries every database's traffic, and the name is the only thing that separates them.
+ *
+ * @param {SqliteHost} host
+ * @param {{invokeMethodAsync: (name: string, ...args: unknown[]) => Promise<unknown>}} target
+ * @param {string} databaseName
+ * @param {string} [method] the [JSInvokable] method to call with the table names
+ */
+export function listen(host, target, databaseName, method = 'OnTablesChanged') {
+  return host.onNotify((payload, info) => {
+    if (info?.local || payload.databaseName !== databaseName) {
+      return;
+    }
+
+    // Fire and forget: a disposed .NET reference must not wedge the notification pipeline.
+    target.invokeMethodAsync(method, payload.tables ?? []).catch(() => {});
+  });
+}
+
 const CHANGE_CHANNEL = 'blazor-sqlite-changes';
 
 class SqliteHost {
@@ -55,8 +80,21 @@ class SqliteHost {
     // A worker that dies with requests outstanding must not leave them pending forever.
     this.#worker.addEventListener('error', event => this.#failAll(
       new Error(`The SQLite worker failed: ${event.message ?? 'unknown error'}`)));
+
+    // A reply that cannot be deserialized never reaches #settle, so its request would wait for an
+    // answer that has already been thrown away. The id is gone with it, so every outstanding
+    // request fails - the same trade the error handler makes, and better than hanging.
+    this.#worker.addEventListener('messageerror', () => this.#failAll(
+      new Error('A reply from the SQLite worker could not be deserialized.')));
   }
 
+  /**
+   * Subscribes to write notifications.
+   *
+   * The listener is called as `listener(payload, { local })`. `local` is true for a write this
+   * host's own worker performed and false for one another tab broadcast, which is the distinction a
+   * caller that already knows about its own writes needs in order not to react twice.
+   */
   onNotify(listener) {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
@@ -72,7 +110,7 @@ class SqliteHost {
     }
 
     for (const listener of this.#listeners) {
-      listener(payload);
+      listener(payload, { local });
     }
   }
 
@@ -82,7 +120,7 @@ class SqliteHost {
       return;
     }
 
-    const pending = this.#pending.get(response.id);
+    const pending = this.#pending.get(response?.id);
     if (!pending) {
       return;
     }

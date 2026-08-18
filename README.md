@@ -45,6 +45,8 @@ live.Changed += (_, rows) => InvokeAsync(StateHasChanged);
 - Arch 2 (`BlazorSqlite.Strict`) - slipped post-1.0. Browsers forbid `Atomics.wait` on the main thread; a spin-wait would freeze the UI; multithreaded WASM is not Blazor's default.
 - Firefox/Safari locally - Playwright's CDN has been geo-blocked here; Chrome/Edge use installed browsers instead. Set `BLAZORSQLITE_BROWSERS=all` after `playwright install` to add the other two. CI runs all four.
 - Soak and §2 latency numbers are not CI gates. The soak suite exists (`npm run soak`) but is opt-in; the benchmark numbers are still a manual read.
+- `in-memory` has no admin view of live data. It registers no VFS, so a database opened on it lives in the engine's own heap inside the worker; `Admin` describes only images passed to it directly. Export, list, and migration away from this backend do not see what a connection wrote. Persistent backends do not have this gap.
+- `indexeddb` serializes readers. `IDBBatchAtomicVFS` is registered with `WebLocksMixin`'s default `exclusive` lock policy, so a read holds the same lock a write does. `SupportsConcurrentReads` reports that honestly.
 
 ## Tests
 

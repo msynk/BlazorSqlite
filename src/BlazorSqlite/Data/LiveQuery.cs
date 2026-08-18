@@ -9,7 +9,13 @@ public sealed class LiveQuery<T> : ILiveQuery<T>
     private readonly Func<CancellationToken, Task<T>> _execute;
     private readonly HashSet<string> _tables;
     private readonly List<TaskCompletionSource<T>> _waiters = [];
+    private readonly Lock _refreshGate = new();
+    private bool _refreshing;
+    private bool _refreshRequested;
     private int _disposed;
+
+    /// <summary>How many times one notification's refresh is attempted before it is given up on.</summary>
+    private const int RefreshAttempts = 2;
 
     public LiveQuery(
         BlazorSqliteConnection connection,
@@ -99,21 +105,74 @@ public sealed class LiveQuery<T> : ILiveQuery<T>
             return;
         }
 
+        RequestRefresh();
+    }
+
+    /// <summary>
+    /// Asks for a refresh, coalescing with one already in flight.
+    /// </summary>
+    /// <remarks>
+    /// Refreshes are single-file because they usually run against an EF <c>DbContext</c>, which
+    /// rejects a second concurrent operation. Overlapping notifications - a burst of writes, or a
+    /// local write and another tab's arriving together - would otherwise throw and be swallowed,
+    /// leaving the query showing data that is one write out of date. A request that arrives while a
+    /// refresh is running therefore sets a flag the running refresh honours before it finishes,
+    /// so the last state of the database is always the state that is read.
+    /// </remarks>
+    private void RequestRefresh()
+    {
+        lock (_refreshGate)
+        {
+            _refreshRequested = true;
+            if (_refreshing)
+            {
+                return;
+            }
+
+            _refreshing = true;
+        }
+
         _ = RefreshQuietlyAsync();
     }
 
     private async Task RefreshQuietlyAsync()
     {
-        try
+        // Yield so the write that raised TablesChanged can finish (EF SaveChanges is still
+        // consuming the insert result when the in-process transport notifies).
+        await Task.Yield();
+
+        while (true)
         {
-            // Yield so the write that raised TablesChanged can finish (EF SaveChanges is
-            // still consuming the insert result when the in-process transport notifies).
-            await Task.Yield();
-            await RefreshAsync().ConfigureAwait(false);
-        }
-        catch (Exception)
-        {
-            // A failed refresh must not take down the write that triggered it.
+            lock (_refreshGate)
+            {
+                if (!_refreshRequested || _disposed != 0)
+                {
+                    _refreshing = false;
+                    return;
+                }
+
+                _refreshRequested = false;
+            }
+
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    await RefreshAsync().ConfigureAwait(false);
+                    break;
+                }
+                catch (Exception) when (attempt < RefreshAttempts - 1 && _disposed == 0)
+                {
+                    // Almost always the write that triggered this is still finishing and the
+                    // context is busy. Give it the rest of the turn and read again.
+                    await Task.Yield();
+                }
+                catch (Exception)
+                {
+                    // A failed refresh must not take down the write that triggered it.
+                    break;
+                }
+            }
         }
     }
 

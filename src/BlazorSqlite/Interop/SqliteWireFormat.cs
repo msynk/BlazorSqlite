@@ -128,7 +128,7 @@ public static class SqliteWireFormat
             // Text, so that no precision is lost. Comparisons and arithmetic over these columns are
             // what the ef_* function set exists to make correct.
             case decimal money:
-                return (TypeCode.Text, money.ToString(CultureInfo.InvariantCulture));
+                return (TypeCode.Text, FormatDecimal(money));
 
             case string text:
                 return (TypeCode.Text, text);
@@ -154,6 +154,25 @@ public static class SqliteWireFormat
         }
     }
 
+    /// <summary>
+    /// Writes a decimal the way Microsoft.Data.Sqlite writes one, which is the canonical TEXT form
+    /// for the whole SQLite/EF stack.
+    /// </summary>
+    /// <remarks>
+    /// Not <c>ToString(InvariantCulture)</c>, which preserves the CLR value's trailing zeros: that
+    /// renders <c>10m</c> as <c>"10"</c> and <c>1.50m</c> as <c>"1.50"</c>, while the rest of the
+    /// stack writes <c>"10.0"</c> and <c>"1.5"</c>. The difference is not cosmetic. EF Core compiles
+    /// decimal equality to a plain TEXT comparison against a literal it renders with this same
+    /// format - <c>WHERE "Price" = '10.0'</c> - so a row the browser wrote as <c>"10"</c> would
+    /// never match, silently. It also makes a database written in the browser differ byte-for-byte
+    /// from the same one written on the server, which is the promise this library exists to keep.
+    /// </remarks>
+    internal static string FormatDecimal(decimal value)
+        => value.ToString(DecimalFormat, CultureInfo.InvariantCulture);
+
+    /// <summary>Microsoft.Data.Sqlite's decimal format string, reproduced exactly.</summary>
+    private const string DecimalFormat = "0.0###########################";
+
     private static (int Type, object? Value) EncodeInteger(long value)
         => value is >= -MaxExactInteger and <= MaxExactInteger
             ? (TypeCode.Integer, value)
@@ -169,7 +188,8 @@ public static class SqliteWireFormat
     public static JsonElement DecodeCall(JsonElement envelope)
     {
         if (envelope.ValueKind != JsonValueKind.Object
-            || !envelope.TryGetProperty("ok", out var ok))
+            || !envelope.TryGetProperty("ok", out var ok)
+            || ok.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
         {
             throw new FormatException(
                 "Expected a { ok, result } or { ok, error } envelope from the worker.");
@@ -277,8 +297,14 @@ public static class SqliteWireFormat
 
         foreach (var row in rows.EnumerateArray())
         {
-            var types = row.GetProperty("t");
-            var values = row.GetProperty("v");
+            // A malformed reply is a wire-format problem, so it is reported as one rather than as
+            // the KeyNotFoundException a bare GetProperty would raise.
+            if (!row.TryGetProperty("t", out var types) || types.ValueKind != JsonValueKind.Array
+                || !row.TryGetProperty("v", out var values) || values.ValueKind != JsonValueKind.Array)
+            {
+                throw new FormatException(
+                    $"Row {index} is not a {{ t, v }} pair of parallel arrays.");
+            }
 
             if (types.GetArrayLength() != values.GetArrayLength())
             {

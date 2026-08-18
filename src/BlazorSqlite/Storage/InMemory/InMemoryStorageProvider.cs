@@ -15,6 +15,15 @@ namespace BlazorSqlite.Storage.InMemory;
 /// It is also the reference implementation of the contract: the smallest thing that passes the
 /// conformance kit, and the one to read before writing a backend.
 /// </para>
+/// <para>
+/// Its <see cref="Admin"/> is a store of its own, not a window onto the running engine. This
+/// backend declares no <see cref="VfsModule"/>, so a database opened on it lives in SQLite's
+/// built-in memory VFS inside the worker, where nothing outside the worker can reach it. Import,
+/// export, exists, and list therefore describe images handed to the admin API and nothing else - a
+/// database written through a connection does not appear here, and migrating away from this
+/// backend copies nothing. That is a consequence of the storage being the engine's own heap, and
+/// the reason this backend is for tests and demos rather than for data anyone wants to keep.
+/// </para>
 /// </remarks>
 public sealed class InMemoryStorageProvider : IBlazorSqliteStorageProvider
 {

@@ -40,6 +40,34 @@ public sealed class BlazorSqliteTransaction : DbTransaction
         await CompleteAsync("ROLLBACK", cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Rolls back a transaction nobody committed, which is what ADO.NET promises disposal does.
+    /// </summary>
+    /// <remarks>
+    /// Without it, an <c>await using</c> block left early would return with the connection still
+    /// inside its <c>BEGIN</c> - and since the transport keeps one database open for the life of
+    /// the session, that open transaction would outlive the scope that started it and block every
+    /// later write. A rollback that itself fails is swallowed: disposal is already the unwinding
+    /// path, and the original reason for leaving the block is the more useful error.
+    /// </remarks>
+    public override async ValueTask DisposeAsync()
+    {
+        if (!_completed)
+        {
+            try
+            {
+                await CompleteAsync("ROLLBACK", CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                _completed = true;
+                _connection.CurrentTransaction = null;
+            }
+        }
+
+        await base.DisposeAsync().ConfigureAwait(false);
+    }
+
     private async Task CompleteAsync(string statement, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_completed, this);

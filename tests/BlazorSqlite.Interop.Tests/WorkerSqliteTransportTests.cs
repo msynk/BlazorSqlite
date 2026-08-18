@@ -1,6 +1,7 @@
 using BlazorSqlite.Data;
 using BlazorSqlite.Interop;
 using BlazorSqlite.Storage;
+using Microsoft.JSInterop;
 using Xunit;
 
 namespace BlazorSqlite.Interop.Tests;
@@ -23,16 +24,93 @@ public sealed class WorkerSqliteTransportTests
         await using var transport = new WorkerSqliteTransport(js, DefaultOptions());
         await transport.OpenAsync("app.db", Ct);
 
-        Assert.Equal("import", js.Calls[0].Identifier);
+        Assert.Equal(
+            ["import", "module.createHost", "module.listen", "host.call"],
+            js.Calls.Select(c => c.Identifier));
         Assert.Equal(WorkerSqliteTransport.DefaultHostModuleUrl, js.Calls[0].Args[0]);
-        Assert.Equal("module.createHost", js.Calls[1].Identifier);
-        Assert.Equal("host.call", js.Calls[2].Identifier);
 
-        var request = js.Calls[2].Args[0]!;
+        var request = OpenRequest(js);
         Assert.Equal("open", Read(request, "kind"));
         Assert.Equal("app.db", Read(request, "databaseName"));
         Assert.Equal("synchronous", Read(request, "requiredBuild"));
         Assert.Null(Read(request, "vfs"));
+    }
+
+    /// <summary>
+    /// The subscription is what makes a live query re-run for another tab's write, and it has to be
+    /// in place before the open so a write during startup is not missed.
+    /// </summary>
+    [Fact]
+    public async Task Open_SubscribesToOtherTabsWrites_ForThisDatabaseOnly()
+    {
+        var js = new ScriptedJsRuntime();
+        js.EnqueueEnvelope("""{ "ok": true, "result": { "build": "synchronous", "reused": false } }""");
+
+        await using var transport = new WorkerSqliteTransport(js, DefaultOptions());
+        await transport.OpenAsync("app.db", Ct);
+
+        var listen = js.Calls.Single(c => c.Identifier == "module.listen");
+        Assert.Equal("app.db", listen.Args[2]);
+        Assert.IsType<DotNetObjectReference<WorkerSqliteTransport>>(listen.Args[1]);
+    }
+
+    [Fact]
+    public async Task OnTablesChanged_RaisesTheTransportEvent()
+    {
+        var js = new ScriptedJsRuntime();
+        js.EnqueueEnvelope("""{ "ok": true, "result": { "build": "synchronous", "reused": false } }""");
+
+        await using var transport = new WorkerSqliteTransport(js, DefaultOptions());
+        await transport.OpenAsync("app.db", Ct);
+
+        SqliteTablesChangedEventArgs? seen = null;
+        transport.TablesChanged += (_, e) => seen = e;
+
+        transport.OnTablesChanged(["product", "customer"]);
+
+        Assert.NotNull(seen);
+        Assert.Contains("product", seen.Tables);
+        Assert.Contains("customer", seen.Tables);
+    }
+
+    /// <summary>
+    /// Through <see cref="ISqliteTransport"/>, not the concrete type. The interface declares
+    /// <c>TablesChanged</c> with a no-op default implementation so existing transports still
+    /// compile, and if the worker transport's own event failed to implement it the subscription
+    /// would bind to that default and cross-tab live queries would go quiet with nothing to see.
+    /// </summary>
+    [Fact]
+    public async Task ARemoteWrite_ReachesAConnectionThroughTheInterface()
+    {
+        var js = new ScriptedJsRuntime();
+        js.EnqueueEnvelope("""{ "ok": true, "result": { "build": "synchronous", "reused": false } }""");
+
+        var transport = new WorkerSqliteTransport(js, DefaultOptions());
+        ISqliteTransport asInterface = transport;
+        await asInterface.OpenAsync("app.db", Ct);
+
+        await using var connection = new BlazorSqliteConnection(asInterface, "app.db");
+        SqliteTablesChangedEventArgs? seen = null;
+        connection.TablesChanged += (_, e) => seen = e;
+
+        transport.OnTablesChanged(["product"]);
+
+        Assert.NotNull(seen);
+        Assert.Contains("product", seen.Tables);
+    }
+
+    [Fact]
+    public async Task Open_SubscribesOnlyOnce_WhenCalledAgain()
+    {
+        var js = new ScriptedJsRuntime();
+        js.EnqueueEnvelope("""{ "ok": true, "result": { "build": "synchronous", "reused": false } }""");
+        js.EnqueueEnvelope("""{ "ok": true, "result": { "build": "synchronous", "reused": true } }""");
+
+        await using var transport = new WorkerSqliteTransport(js, DefaultOptions());
+        await transport.OpenAsync("app.db", Ct);
+        await transport.OpenAsync("app.db", Ct);
+
+        Assert.Single(js.Calls, c => c.Identifier == "module.listen");
     }
 
     [Fact]
@@ -50,8 +128,8 @@ public sealed class WorkerSqliteTransportTests
         await using var transport = new WorkerSqliteTransport(js, options);
         await transport.OpenAsync("app.db", Ct);
 
-        var vfs = Read(js.Calls[2].Args[0]!, "vfs")!;
-        Assert.Equal("asyncCapable", Read(js.Calls[2].Args[0]!, "requiredBuild"));
+        var vfs = Read(OpenRequest(js), "vfs")!;
+        Assert.Equal("asyncCapable", Read(OpenRequest(js), "requiredBuild"));
         Assert.Equal("./_content/BlazorSqlite.Storage.IndexedDb/idb-vfs.js", Read(vfs, "moduleUrl"));
         Assert.Equal("register", Read(vfs, "registerExport"));
     }
@@ -149,6 +227,9 @@ public sealed class WorkerSqliteTransportTests
     {
         RequiredBuild = BlazorSqliteEngineBuild.Synchronous,
     };
+
+    private static object OpenRequest(ScriptedJsRuntime js)
+        => js.Calls.First(c => c.Identifier == "host.call").Args[0]!;
 
     private static object? Read(object target, string property)
         => target.GetType().GetProperty(property)?.GetValue(target);

@@ -230,7 +230,11 @@ export class CacheStorageVFS extends WebLocksMixin(FacadeVFS) {
 
   async #deletePath(path) {
     const keys = await this.#cache.keys();
-    const prefix = `/blazor-sqlite/db/${encodeURIComponent(path)}`;
+
+    // The trailing slash is load-bearing: every entry for a database is `<path>/meta` or
+    // `<path>/p/<n>`, and without it deleting `/app.db` would also match `/app.db2` and
+    // `/app.db-journal`, taking unrelated databases with it.
+    const prefix = `/blazor-sqlite/db/${encodeURIComponent(path)}/`;
     await Promise.all(keys
       .filter(request => new URL(request.url).pathname.startsWith(prefix))
       .map(request => this.#cache.delete(request)));

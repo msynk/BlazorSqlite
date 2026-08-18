@@ -19,6 +19,13 @@ public sealed class SqliteTableNamesTests
     [Theory]
     [InlineData("INSERT INTO product (name) VALUES ('from')", true)]
     [InlineData("SELECT * FROM product", false)]
+    // A write is a write wherever it sits in the batch. Missing one of these is a live query that
+    // never re-runs, which is the failure this heuristic exists to prevent.
+    [InlineData("BEGIN; INSERT INTO product (name) VALUES ('x'); COMMIT;", true)]
+    [InlineData("SELECT 1; UPDATE product SET name = 'x'", true)]
+    [InlineData("BEGIN; SELECT * FROM product; COMMIT;", false)]
+    [InlineData("  \n  DELETE FROM product", true)]
+    [InlineData("SELECT * FROM product; SELECT * FROM category", false)]
     public void DistinguishesWrites(string sql, bool write)
         => Assert.Equal(write, SqliteTableNames.LooksLikeWrite(sql));
 }

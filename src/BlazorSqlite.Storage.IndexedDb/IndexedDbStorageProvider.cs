@@ -48,7 +48,15 @@ public sealed class IndexedDbStorageProvider : IBlazorSqliteStorageProvider
         RequiredBuild = BlazorSqliteEngineBuild.AsyncCapable,
         IsPersistent = true,
         SupportsMultipleConnections = true,
-        SupportsConcurrentReads = true,
+
+        // False because of how idb-vfs.js registers the VFS, not because IndexedDB could not do it:
+        // WebLocksMixin defaults to the 'exclusive' lock policy, under which a read takes the same
+        // exclusive Web Lock a write does and readers queue behind each other. Declaring otherwise
+        // would promise concurrency the registration does not provide. Passing
+        // `lockPolicy: 'shared'` is what would make this true, and is a change to durability-
+        // sensitive locking rather than a declaration.
+        SupportsConcurrentReads = false,
+
         SupportsRelaxedDurability = true,
         SupportsMultiDatabaseTransactions = true,
         CanChangePageSize = false,

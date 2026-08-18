@@ -66,7 +66,61 @@ public sealed class BlazorSqliteDataReader : DbDataReader
 
     public override string GetDataTypeName(int ordinal) => _result.ColumnTypes[ordinal] ?? "BLOB";
 
-    public override Type GetFieldType(int ordinal) => GetValue(ordinal)?.GetType() ?? typeof(object);
+    /// <summary>The CLR type of the column, as a schema question rather than a per-row one.</summary>
+    /// <remarks>
+    /// Answered from the result set rather than from the current row, for two reasons. It must not
+    /// require a positioned reader - callers read schema before the first <c>Read</c> - and it must
+    /// never answer <see cref="DBNull"/>, which is what asking a NULL cell for its type would give.
+    /// The first non-null value in the column is the most honest answer available; failing that the
+    /// column's reported type decides, by SQLite's own affinity rules.
+    /// </remarks>
+    public override Type GetFieldType(int ordinal)
+    {
+        foreach (var row in _result.Rows)
+        {
+            if (ordinal < row.Length && row[ordinal] is { } value)
+            {
+                return value.GetType();
+            }
+        }
+
+        return AffinityOf(ordinal < _result.ColumnTypes.Count ? _result.ColumnTypes[ordinal] : null);
+    }
+
+    /// <summary>
+    /// SQLite's column-affinity rules, which are the only thing a declared type is good for.
+    /// </summary>
+    /// <remarks>
+    /// The worker reports storage classes rather than declared types - its engine is built with
+    /// <c>SQLITE_OMIT_DECLTYPE</c> - so both spellings have to land in the same place: "INTEGER"
+    /// matches the INT rule either way, and so on down the list.
+    /// </remarks>
+    private static Type AffinityOf(string? declaredType)
+    {
+        if (string.IsNullOrEmpty(declaredType))
+        {
+            return typeof(object);
+        }
+
+        if (declaredType.Contains("INT", StringComparison.OrdinalIgnoreCase))
+        {
+            return typeof(long);
+        }
+
+        if (declaredType.Contains("CHAR", StringComparison.OrdinalIgnoreCase)
+            || declaredType.Contains("CLOB", StringComparison.OrdinalIgnoreCase)
+            || declaredType.Contains("TEXT", StringComparison.OrdinalIgnoreCase))
+        {
+            return typeof(string);
+        }
+
+        if (declaredType.Contains("BLOB", StringComparison.OrdinalIgnoreCase))
+        {
+            return typeof(byte[]);
+        }
+
+        return typeof(double);
+    }
 
     public override object GetValue(int ordinal) => CurrentRow[ordinal] ?? DBNull.Value;
 
@@ -137,7 +191,9 @@ public sealed class BlazorSqliteDataReader : DbDataReader
             return source.Length;
         }
 
-        var count = (int)Math.Min(length, source.Length - dataOffset);
+        // Clamped: reading past the end of a blob is how a caller discovers where the end is, so it
+        // returns nothing rather than throwing out of Array.Copy on a negative count.
+        var count = (int)Math.Clamp(Math.Min(length, source.Length - dataOffset), 0, buffer.Length - bufferOffset);
         Array.Copy(source, dataOffset, buffer, bufferOffset, count);
         return count;
     }
@@ -150,7 +206,7 @@ public sealed class BlazorSqliteDataReader : DbDataReader
             return source.Length;
         }
 
-        var count = (int)Math.Min(length, source.Length - dataOffset);
+        var count = (int)Math.Clamp(Math.Min(length, source.Length - dataOffset), 0, buffer.Length - bufferOffset);
         source.CopyTo((int)dataOffset, buffer, bufferOffset, count);
         return count;
     }

@@ -3,7 +3,11 @@
 // EF Core stores decimals as TEXT and asks the worker to add, divide, compare, and order them. IEEE
 // floats cannot do that: 0.1 is already wrong, and 1/3 must come back as twenty-eight threes, not as
 // 0.3333333333333333. The representation is the same one .NET uses - a 96-bit coefficient, a scale
-// of 0–28, and a sign - so the strings we write are the strings EF will later compare with `=`.
+// of 0–28, and a sign - so arithmetic here answers what System.Decimal would answer.
+//
+// Two text forms come out of that, and the distinction matters. `toString` is .NET's ToString and
+// keeps the value's own scale. `toSqlText` is the canonical form the SQLite stack stores, which is
+// what EF compares against with `=`; that is the one every `ef_*` result is written in.
 
 const MAX_COEFF = (1n << 96n) - 1n;
 const MAX_SCALE = 28;
@@ -103,6 +107,28 @@ export class Decimal {
       : digits;
     const split = padded.length - this.scale;
     return `${sign}${padded.slice(0, split)}.${padded.slice(split)}`;
+  }
+
+  /**
+   * The canonical TEXT form the rest of the SQLite/EF stack writes, which is
+   * Microsoft.Data.Sqlite's `0.0###########################` format rather than a plain ToString.
+   *
+   * The two differ: ToString keeps the value's own scale (`10` stays `10`, `1.50` stays `1.50`),
+   * while the canonical form always shows one decimal and trims the rest (`10.0`, `1.5`). EF Core
+   * compiles decimal equality to a plain TEXT comparison against a literal it renders in the
+   * canonical form, so a value written any other way would silently never match. Every `ef_*`
+   * result therefore leaves through here, not through {@link toString}.
+   */
+  toSqlText() {
+    const plain = this.toString();
+    const dot = plain.indexOf('.');
+
+    if (dot === -1) {
+      return `${plain}.0`;
+    }
+
+    const trimmed = plain.slice(dot + 1).replace(/0+$/, '');
+    return `${plain.slice(0, dot)}.${trimmed || '0'}`;
   }
 
   negate() {

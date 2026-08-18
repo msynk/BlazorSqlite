@@ -36,11 +36,28 @@ internal static class BrowserSqlitePcl
 
 internal sealed class BrowserSqlitePclProvider : ISQLite3Provider
 {
+    /// <summary>
+    /// The SQLite version inside the vendored wa-sqlite build. Must match what the engine reports;
+    /// see <c>engine/wa-sqlite.lock.props</c> for the pinned build, and the browser suite's
+    /// engine-version test, which fails if the two drift apart.
+    /// </summary>
+    /// <remarks>
+    /// This is the number EF Core gates its SQL translations on, so a wrong one is not cosmetic.
+    /// Claiming less than the engine offers makes EF fall back to older SQL in the browser while it
+    /// emits the newer form on the server - the same model producing two different queries,
+    /// silently. Claiming more makes it emit SQL the engine cannot run. Reporting the truth also
+    /// happens to be what keeps the two halves in step: the engine SQLitePCLRaw bundles for EF 10
+    /// is 3.53.x, the same series as the vendored wa-sqlite build.
+    /// </remarks>
+    internal const string EngineVersion = "3.53.0";
+
+    private const int EngineVersionNumber = 3_053_000;
+
     public string GetNativeLibraryName() => "blazor-sqlite";
 
-    public utf8z sqlite3_libversion() => utf8z.FromString("3.46.1");
+    public utf8z sqlite3_libversion() => utf8z.FromString(EngineVersion);
 
-    public int sqlite3_libversion_number() => 3046001;
+    public int sqlite3_libversion_number() => EngineVersionNumber;
 
     public utf8z sqlite3_sourceid() => utf8z.FromString("blazor-sqlite");
 
