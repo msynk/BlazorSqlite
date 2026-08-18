@@ -4,6 +4,11 @@ Same entities, `AppDbContext`, and migrations on both sides. The WASM UI is a wo
 that lives in the browser: switch storage backends, edit products / customers / orders, and
 inspect the SQL EF generates.
 
+Every panel ships the code that drives it. Each demo card carries a copyable, syntax-highlighted
+snippet of the actual call it makes - the snippets live in `BlazorSqlite.Samples.Client/Snippets.cs`,
+so they stay next to the sample they document. The header also carries an Auto / light / dark theme
+switch; the choice is stored in `localStorage` and applied before first paint.
+
 ```
 BlazorSqlite.Samples.Domain     entities (catalog, customers, orders)
 BlazorSqlite.Samples.Data       DbContext + IEntityTypeConfiguration<T> + migrations + demo seed
@@ -28,8 +33,8 @@ Then open http://localhost:5288.
 | Admin | `IBlazorSqliteStorageAdmin` list / export / import / delete |
 | Limits | Sync APIs throw; WAL / `ATTACH` / `PRAGMA page_size` are guarded |
 
-The header bar is the storage switch. **Move data** exports the SQLite image, imports it on the
-target, checks the header, flips the sticky binding, and deletes the source. **Empty on this
+The bar under the header is the storage switch. **Move data** exports the SQLite image, imports
+it on the target, checks the header, flips the sticky binding, and deletes the source. **Empty on this
 backend** binds a fresh file. Existing data outranks configured preference (OPFS → IndexedDB →
 Cache Storage → in-memory). The two sides do not sync - that is post-1.0.
 
