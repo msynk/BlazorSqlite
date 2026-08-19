@@ -152,7 +152,10 @@ test.describe('batching', () => {
 
     expect(result.columnNames).toEqual(['id']);
     expect(result.rows).toEqual([[1]]);
-    expect(result.recordsAffected).toBeGreaterThanOrEqual(1);
+
+    // Exactly one: sqlite3_changes still says 1 after the SELECT, and a count that asked it after
+    // every statement billed the row twice.
+    expect(result.recordsAffected).toBe(1);
   });
 
   test('a scalar request stops after the first row', async ({ page }) => {
@@ -197,6 +200,31 @@ test.describe('value round-tripping', () => {
     expect(result.rows[0][2]).toBe('text');
     expect(result.rows[0][3]).toEqual({ blob: [1, 2, 250] });
     expect(result.rows[0][4]).toBeNull();
+  });
+
+  /**
+   * JSON has no spelling for Infinity - JSON.stringify writes null - and the .NET transport reads the
+   * rows through JSON. So it travels as a string, and NaN, which SQLite stores as NULL, comes back
+   * as one.
+   */
+  test('carries an infinite REAL, and NaN as the NULL SQLite makes of it', async ({ page }) => {
+    await exec(page, 'CREATE TABLE reals (r REAL)');
+    await exec(page, 'INSERT INTO reals VALUES (@a), (@b), (@c)', [
+      { name: '@a', value: Number.POSITIVE_INFINITY },
+      { name: '@b', value: Number.NEGATIVE_INFINITY },
+      { name: '@c', value: Number.NaN },
+    ]);
+
+    const result = await query(page, 'SELECT r FROM reals');
+
+    expect(result.rows).toEqual([[Number.POSITIVE_INFINITY], [Number.NEGATIVE_INFINITY], [null]]);
+
+    // What actually crossed the wire: a string, not the null JSON would have made of it.
+    const raw = await page.evaluate(async () => {
+      const [first] = await globalThis.host.execute([{ commandText: 'SELECT r FROM reals', resultKind: 'reader' }]);
+      return first.rows.map(row => row.v[0]);
+    });
+    expect(raw).toEqual(['Infinity', '-Infinity', null]);
   });
 
   /**
@@ -257,6 +285,36 @@ test.describe('request serialization', () => {
     });
 
     expect((await query(page, 'SELECT n FROM counter')).rows).toEqual([[25]]);
+  });
+
+  /**
+   * A worker whose script never loaded has nobody listening. The first request fails through the
+   * error event; the ones after it must fail the same way rather than wait for an answer that is
+   * never coming.
+   */
+  test('a worker that failed to load rejects every request, not just the first', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.waitForFunction(() => globalThis.BlazorSqliteReady === true);
+
+    const outcomes = await page.evaluate(async () => {
+      const host = globalThis.BlazorSqlite.host.createHost('/_content/BlazorSqlite/no-such-worker.js');
+      const attempt = async () => {
+        try {
+          await host.version();
+          return 'resolved';
+        } catch (error) {
+          return error.message;
+        }
+      };
+
+      const first = await attempt();
+      const second = await attempt();
+      host.dispose();
+      return { first, second };
+    });
+
+    expect(outcomes.first).toMatch(/SQLite worker failed/);
+    expect(outcomes.second).toMatch(/SQLite worker failed/);
   });
 
   test('disposing rejects requests still in flight', async ({ page }) => {

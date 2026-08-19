@@ -33,7 +33,10 @@ Selection is sticky: existing data outranks preference. `StorageMigrationMode.Au
 
 ## Live queries
 
-Table-level. A write re-runs any live query that reads that table, including across tabs.
+Table-level. A committed write re-runs any live query that reads that table, including across tabs.
+The worker learns what changed from SQLite's own update hook - cascades and triggers included - and
+reports it once the transaction commits, so a rolled-back write is never shown and a multi-statement
+`SaveChangesAsync` re-runs a query once, not per statement.
 
 ```csharp
 await using var live = ctx.Orders.Where(o => o.Open).AsLiveQuery();
@@ -50,7 +53,9 @@ live.Changed += (_, rows) => InvokeAsync(StateHasChanged);
 
 ## Tests
 
-Do not rely on `dotnet test` (MTP has reported “Zero tests ran”). Run the test exe:
+Restore first: the wa-sqlite engine and the upstream VFS files are vendored at restore, verified against
+the checksums in the `*.lock.props` files, and gitignored. Do not rely on `dotnet test` (MTP has
+reported “Zero tests ran”). Run the test exe:
 
 ```
 ./tests/BlazorSqlite.Storage.Tests/bin/Debug/net10.0/BlazorSqlite.Storage.Tests.exe
@@ -58,7 +63,7 @@ Do not rely on `dotnet test` (MTP has reported “Zero tests ran”). Run the te
 ./tests/BlazorSqlite.EntityFrameworkCore.Tests/bin/Debug/net10.0/BlazorSqlite.EntityFrameworkCore.Tests.exe
 ```
 
-Browser: `npx playwright test --project=chrome` from `tests/BlazorSqlite.Browser.Tests`. `npm run test:all` adds Firefox and WebKit, which need `npm run install-browsers` first. `BLAZORSQLITE_TEST_PORT` moves the test server off 5199 when something else holds it.
+Browser: `npx playwright test --project=chrome` from `tests/BlazorSqlite.Browser.Tests`. `npm run test:all` adds Firefox and WebKit, which need `npm run install-browsers` first. `BLAZORSQLITE_TEST_PORT` moves the test server off 5199 when something else holds it - and check that first when every test times out on page load, since Playwright reuses whatever is already answering on the port. The server also mirrors the whole layout under `/nested/`, which is how the sub-path tests prove that no library URL is root-relative.
 
 JavaScript units: `node --test "tests/BlazorSqlite.Js.Tests/*.test.js"`.
 
@@ -68,7 +73,7 @@ JavaScript units: `node --test "tests/BlazorSqlite.Js.Tests/*.test.js"`.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on pushes and pull requests to `main`: the three test executables on Linux and Windows, the JavaScript units, and the browser suite across Chrome, Edge, Firefox, and WebKit. A green run then packs and uploads the five packages as build artifacts. Soak and benchmarks stay manual.
+`.github/workflows/ci.yml` runs on pushes and pull requests to `main`: the three test executables on Linux and Windows, the JavaScript units, and the browser suite across Chrome, Edge, Firefox, and WebKit. The JavaScript and browser jobs restore the library projects first, because the engine and VFS files they serve are vendored at restore rather than committed. A green run then packs and uploads the five packages as build artifacts. Soak and benchmarks stay manual.
 
 ## Benchmarks
 

@@ -15,10 +15,10 @@ namespace BlazorSqlite.EntityFrameworkCore;
 /// executor) is already async, so overriding the four abstract members is enough.
 /// </para>
 /// <para>
-/// <c>Delete</c> drops user tables rather than asking the storage provider to forget the file.
-/// The transport keeps the database open across EF's per-operation close, so there is no file to
-/// unlink; the admin API is what a future <c>EnsureDeleted</c> that must wipe persistent storage
-/// will call.
+/// <c>Delete</c> drops user tables and views rather than asking the storage provider to forget the
+/// file. The transport keeps the database open across EF's per-operation close, so there is no
+/// file to unlink; the admin API is what a future <c>EnsureDeleted</c> that must wipe persistent
+/// storage will call.
 /// </para>
 /// </remarks>
 public sealed class BlazorSqliteDatabaseCreator(
@@ -35,8 +35,13 @@ public sealed class BlazorSqliteDatabaseCreator(
         WHERE "type" = 'table' AND "rootpage" IS NOT NULL AND "name" NOT LIKE 'sqlite_%'
         """;
 
-    private const string ListTablesSql = """
-        SELECT "name" FROM "sqlite_master" WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite_%'
+    // Views first, then tables: a view over a dropped table is harmless to SQLite but not to the
+    // next EnsureCreated, which would trip over the leftover. Indexes and triggers go with their
+    // table.
+    private const string ListObjectsSql = """
+        SELECT "type", "name" FROM "sqlite_master"
+        WHERE "type" IN ('table', 'view') AND "name" NOT LIKE 'sqlite_%'
+        ORDER BY CASE "type" WHEN 'view' THEN 0 ELSE 1 END, "rowid"
         """;
 
     /// <summary>
@@ -74,19 +79,19 @@ public sealed class BlazorSqliteDatabaseCreator(
 
     public override async Task DeleteAsync(CancellationToken cancellationToken = default)
     {
-        var tables = new List<string>();
+        var objects = new List<(string Type, string Name)>();
 
         await Dependencies.Connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var command = rawSqlCommandBuilder.Build(ListTablesSql);
+            var command = rawSqlCommandBuilder.Build(ListObjectsSql);
             await using var reader = await command
                 .ExecuteReaderAsync(CreateParameterObject(), cancellationToken)
                 .ConfigureAwait(false);
 
             while (await reader.DbDataReader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                tables.Add(reader.DbDataReader.GetString(0));
+                objects.Add((reader.DbDataReader.GetString(0), reader.DbDataReader.GetString(1)));
             }
         }
         finally
@@ -94,10 +99,37 @@ public sealed class BlazorSqliteDatabaseCreator(
             await Dependencies.Connection.CloseAsync().ConfigureAwait(false);
         }
 
-        foreach (var table in tables)
+        if (objects.Count == 0)
         {
-            await ExecuteNonQueryAsync($"DROP TABLE IF EXISTS \"{table}\"", cancellationToken)
-                .ConfigureAwait(false);
+            return;
+        }
+
+        // With foreign keys on - and the worker turns them on - DROP TABLE runs an implicit DELETE
+        // that a referencing table with rows can veto, and the drop order out of sqlite_master is
+        // creation order, parents first. Enforcement is suspended for the drops and put back to
+        // whatever it was, since the connection lives on after this.
+        var foreignKeys = Convert.ToInt64(
+            await ExecuteScalarAsync("PRAGMA foreign_keys", cancellationToken).ConfigureAwait(false));
+        if (foreignKeys != 0L)
+        {
+            await ExecuteNonQueryAsync("PRAGMA foreign_keys=OFF", cancellationToken).ConfigureAwait(false);
+        }
+
+        try
+        {
+            foreach (var (type, name) in objects)
+            {
+                var keyword = type == "view" ? "VIEW" : "TABLE";
+                await ExecuteNonQueryAsync($"DROP {keyword} IF EXISTS \"{name.Replace("\"", "\"\"")}\"", cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            if (foreignKeys != 0L)
+            {
+                await ExecuteNonQueryAsync("PRAGMA foreign_keys=ON", CancellationToken.None).ConfigureAwait(false);
+            }
         }
     }
 

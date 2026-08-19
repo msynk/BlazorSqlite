@@ -50,9 +50,14 @@ export function encodeRow(sqlite3, stmt, columnCount) {
         break;
       }
 
-      case WireType.real:
-        v[i] = sqlite3.column_double(stmt, i);
+      case WireType.real: {
+        // JSON has no spelling for Infinity - JSON.stringify writes null - so it travels as the
+        // string Number() and double.Parse both read back. NaN never reaches here: SQLite stores
+        // it as NULL.
+        const value = sqlite3.column_double(stmt, i);
+        v[i] = Number.isFinite(value) ? value : String(value);
         break;
+      }
 
       case WireType.text:
         v[i] = sqlite3.column_text(stmt, i);
@@ -86,7 +91,10 @@ export function decodeParameter({ type, value }) {
     case WireType.integer:
       return typeof value === 'string' ? BigInt(value) : value;
 
+    // Infinity arrives as a string, JSON having no spelling for it.
     case WireType.real:
+      return typeof value === 'string' ? Number(value) : value;
+
     case WireType.text:
       return value;
 
@@ -113,9 +121,16 @@ export function encodeValue(value) {
       return { type: WireType.integer, value: value ? 1 : 0 };
 
     case 'number':
-      return Number.isInteger(value)
-        ? { type: WireType.integer, value }
-        : { type: WireType.real, value };
+      if (Number.isNaN(value)) {
+        // SQLite stores NaN as NULL, so it is sent as one.
+        return { type: WireType.null, value: null };
+      }
+
+      if (Number.isInteger(value)) {
+        return { type: WireType.integer, value };
+      }
+
+      return { type: WireType.real, value: Number.isFinite(value) ? value : String(value) };
 
     case 'bigint':
       return {
@@ -143,6 +158,9 @@ export function decodeValue(type, value) {
 
     case WireType.integer:
       return typeof value === 'string' ? BigInt(value) : value;
+
+    case WireType.real:
+      return typeof value === 'string' ? Number(value) : value;
 
     case WireType.blob:
       return fromBase64(value);

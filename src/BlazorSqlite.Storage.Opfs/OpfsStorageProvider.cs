@@ -25,11 +25,15 @@ public sealed class OpfsStorageProvider : IBlazorSqliteStorageProvider
     /// <summary>The VFS name <c>open_v2</c> must ask for after registration.</summary>
     public const string VfsName = "opfs-coop-sync";
 
-    // Root-relative: the worker's base URL is the core package, so a leading ./ would resolve
-    // under _content/BlazorSqlite/ and miss this package's assets.
-    public const string VfsModuleUrl = "/_content/BlazorSqlite.Storage.Opfs/opfs-vfs.js";
+    /// <summary>
+    /// The VFS module, named the way every Blazor static asset is named - relative to the
+    /// document - so an application served under a sub-path still finds it. The worker host
+    /// resolves it against the document base before the worker imports it.
+    /// </summary>
+    public const string VfsModuleUrl = "./_content/BlazorSqlite.Storage.Opfs/opfs-vfs.js";
 
-    public const string AdminModuleUrl = "/_content/BlazorSqlite.Storage.Opfs/opfs-admin.js";
+    /// <summary>The admin module, imported on the main thread relative to the document.</summary>
+    public const string AdminModuleUrl = "./_content/BlazorSqlite.Storage.Opfs/opfs-admin.js";
 
     private readonly IJSRuntime? _js;
 

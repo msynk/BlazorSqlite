@@ -8,7 +8,8 @@
 // would make 1/3 and 0.1 silently wrong, and EF's equality is a string compare against the canonical
 // form this module writes back.
 
-import { Decimal } from './blazor-sqlite-decimal.js';
+// Imported dynamically so this module's cache key travels with it: see the note in the worker.
+const { Decimal } = await import('./blazor-sqlite-decimal.js' + new URL(import.meta.url).search);
 import * as SQLite from './engine/sqlite-constants.js';
 
 const FUNCTION_FLAGS = SQLite.SQLITE_UTF8 | SQLite.SQLITE_DETERMINISTIC | SQLite.SQLITE_INNOCUOUS;
@@ -119,7 +120,7 @@ export function registerFunctions(module, sqlite3, db) {
       return;
     }
 
-    sqlite3.result(ctx, new RegExp(pattern).test(input) ? 1 : 0);
+    sqlite3.result(ctx, compileRegExp(pattern).test(input) ? 1 : 0);
   });
 
   registerAggregate(sqlite3, db, module, 'ef_sum', {
@@ -182,6 +183,29 @@ export function registerFunctions(module, sqlite3, db) {
   });
 
   registerCollation(module, db);
+}
+
+/**
+ * A query applies one pattern to every row it scans, so the compiled RegExp is kept between calls
+ * rather than rebuilt per row. Bounded and first-in-first-out: EF sends a handful of distinct
+ * patterns, and a query that generates them from data must not grow this without limit.
+ */
+const REGEXP_CACHE_SIZE = 64;
+const regExpCache = new Map();
+
+function compileRegExp(pattern) {
+  let compiled = regExpCache.get(pattern);
+  if (compiled) {
+    return compiled;
+  }
+
+  compiled = new RegExp(pattern);
+  if (regExpCache.size >= REGEXP_CACHE_SIZE) {
+    regExpCache.delete(regExpCache.keys().next().value);
+  }
+
+  regExpCache.set(pattern, compiled);
+  return compiled;
 }
 
 /**

@@ -144,6 +144,30 @@ test.describe('OPFS multi-tab', () => {
   });
 });
 
+/**
+ * The harder order: the reader opened while the file was still empty and has to notice, at each
+ * read transaction, that the other tab grew it.
+ */
+test('a tab that opened first sees a write that grew the file', async ({ browser }) => {
+  const databaseName = uniqueName('grow');
+  const context = await browser.newContext();
+  const reader = await context.newPage();
+  const writer = await context.newPage();
+
+  try {
+    await openOpfs(reader, databaseName);
+    expect((await query(reader, "SELECT name FROM sqlite_master WHERE type = 'table'")).rows).toEqual([]);
+
+    await openOpfs(writer, databaseName);
+    await exec(writer, 'CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT)');
+    await exec(writer, "INSERT INTO product (name) VALUES ('Grown')");
+
+    expect((await query(reader, 'SELECT name FROM product')).rows).toEqual([['Grown']]);
+  } finally {
+    await context.close();
+  }
+});
+
 function uniqueName(label) {
   return `opfs-${label}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }

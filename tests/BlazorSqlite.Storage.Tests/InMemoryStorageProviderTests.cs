@@ -24,6 +24,10 @@ public sealed class InMemoryStorageProviderTests
         Assert.False(provider.Capabilities.IsPersistent);
         Assert.Equal(BlazorSqliteEngineBuild.Synchronous, provider.Capabilities.RequiredBuild);
         Assert.Null(provider.VfsModule);
+
+        // A second worker is a second heap: nothing is shared, so nothing is claimed.
+        Assert.False(provider.Capabilities.SupportsMultipleConnections);
+        Assert.False(provider.Capabilities.SupportsConcurrentReads);
     }
 
     [Fact]

@@ -4,11 +4,12 @@
 
 <SessionLifecycle OnReady="LoadAsync" OnTearDown="NoopAsync" />
 
-<p class="lead">
-    <code>IBlazorSqliteStorageAdmin</code> operates on databases as files: list, export, import,
-    delete. Cross-provider migration uses the same surface (copy bytes, then
-    <code>PRAGMA integrity_check</code>). These calls do not go through EF.
-</p>
+<PageHeader Kicker="Platform · Files" Title="The database as a file">
+    <code>IBlazorSqliteStorageAdmin</code> treats a database as an artifact rather than a
+    connection: what exists, read the bytes out, write bytes back, delete. Cross-provider
+    migration and the diagnostics on <a href="storage">Storage</a> are built from this same
+    surface, and none of it goes through EF.
+</PageHeader>
 
 @if (_error is not null)
 {
@@ -19,67 +20,109 @@
     <p class="note">@_info</p>
 }
 
-<section class="card">
-    <h2>What each backend holds</h2>
-    <p>Names come from the provider's admin API. Related <code>-journal</code> files are not databases.</p>
-    <button type="button" class="secondary" @onclick="ListAllAsync" disabled="@_busy">Refresh lists</button>
-    @foreach (var group in _lists)
-    {
-        <h3><code>@group.Name</code></h3>
-        @if (group.Names.Count == 0)
-        {
-            <p>Empty.</p>
-        }
-        else
-        {
-            <ul class="plain">
-                @foreach (var name in group.Names)
-                {
-                    <li>@name</li>
-                }
-            </ul>
-        }
-    }
-</section>
-
-<section class="card">
-    <h2>Export</h2>
-    <p>
-        Downloads a SQLite image of <code>@BrowserDatabase.DatabaseName</code> from the backend
-        that currently owns it. On OPFS this is a real file read; on IndexedDB / Cache Storage it
-        is assembled from pages.
-    </p>
-    <button type="button" @onclick="ExportAsync" disabled="@_busy">Download app.db</button>
-</section>
-
-<section class="card">
-    <h2>Import</h2>
-    <p>
-        Replaces the named database on the selected backend, then records the sticky binding so
-        the next open does not create an empty file on a different provider. The open worker is
-        closed first so it cannot keep writing the old image.
-    </p>
-    <div class="row">
-        <select @bind="_importProvider">
-            @foreach (var provider in Database.Providers)
+<div class="stack-lg">
+    <DemoCard Step="List"
+              Title="What each backend holds"
+              CodeTitle="Listing databases"
+              Code="@Snippets.Admin.List">
+        <Description>
+            <span>
+                Names come from the provider, so a backend that has never been used reports empty
+                rather than failing. Related <code>-journal</code> files are not databases and do
+                not appear.
+            </span>
+        </Description>
+        <ChildContent>
+            <button type="button" class="secondary" @onclick="ListAllAsync" disabled="@_busy">Refresh lists</button>
+            @foreach (var group in _lists)
             {
-                <option value="@provider.Name">@provider.Name</option>
+                <h3><code>@group.Name</code></h3>
+                @if (group.Names.Count == 0)
+                {
+                    <p class="empty">Empty.</p>
+                }
+                else
+                {
+                    <ul class="plain">
+                        @foreach (var name in group.Names)
+                        {
+                            <li>@name</li>
+                        }
+                    </ul>
+                }
             }
-        </select>
-        <InputFile OnChange="OnFile" accept=".db,.sqlite,application/octet-stream" />
-        <button type="button" @onclick="ImportAsync" disabled="@(_busy || _importBytes is null)">Import and reopen</button>
-    </div>
-</section>
+        </ChildContent>
+    </DemoCard>
 
-<section class="card">
-    <h2>Delete</h2>
-    <p>
-        Removes <code>@BrowserDatabase.DatabaseName</code> from the current backend and forgets
-        the sticky binding, so the next open is free to pick the preferred provider again.
-        The session is closed first.
-    </p>
-    <button type="button" @onclick="DeleteAsync" disabled="@_busy">Delete app.db and reopen empty</button>
-</section>
+    <DemoCard Step="Export"
+              Title="Download a real .db"
+              CodeTitle="Exporting"
+              Code="@Snippets.Admin.Export">
+        <Description>
+            <span>
+                Exports <code>@BrowserDatabase.DatabaseName</code> from whichever backend currently
+                owns it. On OPFS that is a file read; on IndexedDB and Cache Storage the image is
+                assembled from pages. Either way the result is an ordinary SQLite file.
+            </span>
+        </Description>
+        <Try>
+            <span>Download it and open it in any desktop SQLite tool - the rows you edited are there.</span>
+        </Try>
+        <ChildContent>
+            <button type="button" @onclick="ExportAsync" disabled="@_busy">Download app.db</button>
+        </ChildContent>
+    </DemoCard>
+
+    <DemoCard Step="Import"
+              Title="Seed a tab from a file"
+              CodeTitle="Importing"
+              Code="@Snippets.Admin.Import">
+        <Description>
+            <span>
+                Replaces the named database on the selected backend and records the sticky binding,
+                so the next open finds the imported data instead of creating an empty file
+                elsewhere. The worker is closed first: an open connection would keep writing the
+                image being replaced.
+            </span>
+        </Description>
+        <Try>
+            <span>
+                Export above, delete below, then import the file back. This is also how you ship a
+                pre-built database with an app.
+            </span>
+        </Try>
+        <ChildContent>
+            <div class="row">
+                <select @bind="_importProvider">
+                    @foreach (var provider in Database.Providers)
+                    {
+                        <option value="@provider.Name">@SampleStorage.Title(provider.Name)</option>
+                    }
+                </select>
+                <InputFile OnChange="OnFile" accept=".db,.sqlite,application/octet-stream" />
+                <button type="button" @onclick="ImportAsync" disabled="@(_busy || _importBytes is null)">Import and reopen</button>
+            </div>
+        </ChildContent>
+    </DemoCard>
+
+    <DemoCard Step="Delete"
+              Title="Start over"
+              CodeTitle="Deleting"
+              Code="@Snippets.Admin.Delete">
+        <Description>
+            <span>
+                Removes <code>@BrowserDatabase.DatabaseName</code> from the current backend and
+                forgets the binding, so the next open is free to pick the preferred provider again,
+                run the migrations, and reseed.
+            </span>
+        </Description>
+        <ChildContent>
+            <button type="button" class="danger" @onclick="DeleteAsync" disabled="@_busy">
+                Delete app.db and reopen empty
+            </button>
+        </ChildContent>
+    </DemoCard>
+</div>
 
 @code {
     private readonly List<(string Name, IReadOnlyList<string> Names)> _lists = [];
@@ -194,7 +237,12 @@
             await Database.CloseSessionAsync();
             await provider.Admin.ImportAsync(BrowserDatabase.DatabaseName, _importBytes);
             await Database.Bindings.SetProviderNameAsync(BrowserDatabase.DatabaseName, provider.Name);
-            await Database.OpenContextAsync();
+
+            // Reopened here so migrations and the seed run before the pages come back for it.
+            await using (await Database.OpenContextAsync())
+            {
+            }
+
             await Database.NotifySessionChangedAsync();
             _info = $"Imported into {provider.Name} and reopened. Catalog and orders will refresh.";
             await ListAllAsync();
@@ -222,7 +270,11 @@
             await Database.CloseSessionAsync();
             await provider.Admin.DeleteAsync(BrowserDatabase.DatabaseName);
             await Database.Bindings.RemoveAsync(BrowserDatabase.DatabaseName);
-            await Database.OpenContextAsync();
+
+            await using (await Database.OpenContextAsync())
+            {
+            }
+
             await Database.NotifySessionChangedAsync();
             _info = "Deleted and reopened. Migrations ran again; the workshop catalog was reseeded if empty.";
             await ListAllAsync();

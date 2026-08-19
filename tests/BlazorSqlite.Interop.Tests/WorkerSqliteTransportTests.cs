@@ -27,7 +27,13 @@ public sealed class WorkerSqliteTransportTests
         Assert.Equal(
             ["import", "module.createHost", "module.listen", "host.call"],
             js.Calls.Select(c => c.Identifier));
-        Assert.Equal(WorkerSqliteTransport.DefaultHostModuleUrl, js.Calls[0].Args[0]);
+        // Stamped, not bare: the version in the query is what keeps a browser from answering the
+        // import with a module it cached under an earlier one.
+        Assert.Equal(WorkerSqliteTransport.VersionedHostModuleUrl, js.Calls[0].Args[0]);
+        Assert.StartsWith(
+            WorkerSqliteTransport.DefaultHostModuleUrl + "?v=",
+            WorkerSqliteTransport.VersionedHostModuleUrl,
+            StringComparison.Ordinal);
 
         var request = OpenRequest(js);
         Assert.Equal("open", Read(request, "kind"));
@@ -37,11 +43,11 @@ public sealed class WorkerSqliteTransportTests
     }
 
     /// <summary>
-    /// The subscription is what makes a live query re-run for another tab's write, and it has to be
-    /// in place before the open so a write during startup is not missed.
+    /// The subscription is what makes a live query re-run for a committed write - this tab's or
+    /// another's - and it has to be in place before the open so a write during startup is not missed.
     /// </summary>
     [Fact]
-    public async Task Open_SubscribesToOtherTabsWrites_ForThisDatabaseOnly()
+    public async Task Open_SubscribesToCommittedWrites_ForThisDatabaseOnly()
     {
         var js = new ScriptedJsRuntime();
         js.EnqueueEnvelope("""{ "ok": true, "result": { "build": "synchronous", "reused": false } }""");
@@ -52,6 +58,10 @@ public sealed class WorkerSqliteTransportTests
         var listen = js.Calls.Single(c => c.Identifier == "module.listen");
         Assert.Equal("app.db", listen.Args[2]);
         Assert.IsType<DotNetObjectReference<WorkerSqliteTransport>>(listen.Args[1]);
+
+        // The worker reports this tab's own writes too, from the engine's hooks and only once
+        // committed, so the command layer must not raise them again from the SQL text.
+        Assert.True(transport.ReportsLocalWrites);
     }
 
     [Fact]

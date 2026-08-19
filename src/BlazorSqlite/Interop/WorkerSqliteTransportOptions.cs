@@ -16,7 +16,7 @@ public sealed class WorkerSqliteTransportOptions
     /// The ES module that exports <c>createHost</c>. Override only when an application hosts the
     /// worker from a path other than the RCL default.
     /// </summary>
-    public string HostModuleUrl { get; init; } = WorkerSqliteTransport.DefaultHostModuleUrl;
+    public string HostModuleUrl { get; init; } = WorkerSqliteTransport.VersionedHostModuleUrl;
 
     /// <summary>
     /// The worker script the host should spawn. <see langword="null"/> uses the host module's own

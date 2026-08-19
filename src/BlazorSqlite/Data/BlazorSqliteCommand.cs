@@ -110,7 +110,7 @@ public sealed class BlazorSqliteCommand : DbCommand
 
         if (SqliteTableNames.LooksLikeWrite(CommandText))
         {
-            _connection.NotifyTablesChanged(SqliteTableNames.Extract(CommandText));
+            _connection.OnCommandWrote(SqliteTableNames.Extract(CommandText));
         }
 
         return results[0];

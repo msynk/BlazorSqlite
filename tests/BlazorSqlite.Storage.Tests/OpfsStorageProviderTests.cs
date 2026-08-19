@@ -29,13 +29,15 @@ public sealed class OpfsStorageProviderTests
     }
 
     [Fact]
-    public void VfsModule_IsRootRelative_SoTheWorkerCanImportIt()
+    public void VfsModule_IsDocumentRelative_LikeEveryOtherBlazorAsset()
     {
         var vfs = new OpfsStorageProvider().VfsModule;
 
         Assert.NotNull(vfs);
         Assert.Equal(OpfsStorageProvider.VfsModuleUrl, vfs.ModuleUrl);
-        Assert.StartsWith("/_content/", vfs.ModuleUrl, StringComparison.Ordinal);
+        // Relative to the document, not the origin root: an application hosted under a sub-path must
+        // still find it. The host resolves it against the document base before the worker imports it.
+        Assert.StartsWith("./_content/", vfs.ModuleUrl, StringComparison.Ordinal);
         Assert.Equal("register", vfs.RegisterExport);
     }
 

@@ -1,4 +1,7 @@
 using BlazorSqlite.Data;
+using BlazorSqlite.Storage;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace BlazorSqlite.Interop;
 
@@ -13,7 +16,9 @@ namespace BlazorSqlite.Interop;
 /// </para>
 /// <para>
 /// <see cref="StorageMigrationMode.AutomaticOnOpen"/> copies to the preferred backend, checks the
-/// image, then flips the binding. A failed copy leaves the source and the binding untouched.
+/// image, then flips the binding. A failed copy leaves the source and the binding untouched, is
+/// logged, and does not stop the open: the user's data is still where it was, and an opportunistic
+/// move is not a reason to keep them from it.
 /// </para>
 /// </remarks>
 public sealed class BlazorSqliteSessionFactory
@@ -23,13 +28,15 @@ public sealed class BlazorSqliteSessionFactory
     private readonly BlazorSqliteStorageSelection _selection;
     private readonly StorageMigrator _migrator;
     private readonly IStorageBindingStore _bindings;
+    private readonly ILogger _logger;
 
     public BlazorSqliteSessionFactory(
         StorageProviderResolver resolver,
         ISqliteTransportFactory transports,
         BlazorSqliteStorageSelection selection,
         IStorageBindingStore bindings,
-        StorageMigrator? migrator = null)
+        StorageMigrator? migrator = null,
+        ILogger<BlazorSqliteSessionFactory>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(resolver);
         ArgumentNullException.ThrowIfNull(transports);
@@ -41,6 +48,7 @@ public sealed class BlazorSqliteSessionFactory
         _selection = selection;
         _bindings = bindings;
         _migrator = migrator ?? new StorageMigrator();
+        _logger = logger ?? NullLogger<BlazorSqliteSessionFactory>.Instance;
     }
 
     /// <summary>
@@ -59,13 +67,13 @@ public sealed class BlazorSqliteSessionFactory
         if (_selection.MigrationMode is StorageMigrationMode.AutomaticOnOpen
             && resolution.BetterProviderAvailable is { } better)
         {
-            await _migrator
-                .MigrateAsync(databaseName, resolution.Provider, better, _bindings, cancellationToken)
-                .ConfigureAwait(false);
-
-            resolution = await _resolver
-                .ResolveAsync(databaseName, _selection, cancellationToken)
-                .ConfigureAwait(false);
+            if (await TryMigrateAsync(databaseName, resolution.Provider, better, cancellationToken)
+                .ConfigureAwait(false))
+            {
+                resolution = await _resolver
+                    .ResolveAsync(databaseName, _selection, cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
 
         var transport = _transports.Create(resolution.Provider);
@@ -96,5 +104,38 @@ public sealed class BlazorSqliteSessionFactory
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         return new BlazorSqliteSession(connection, transport, resolution);
+    }
+
+    /// <summary>
+    /// Runs the automatic migration, reporting rather than throwing when it fails: the migrator
+    /// guarantees the source and the binding are untouched, so the database opens where it was and
+    /// <see cref="StorageResolution.BetterProviderAvailable"/> still says a move is possible.
+    /// </summary>
+    private async Task<bool> TryMigrateAsync(
+        string databaseName,
+        IBlazorSqliteStorageProvider source,
+        IBlazorSqliteStorageProvider target,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _migrator
+                .MigrateAsync(databaseName, source, target, _bindings, cancellationToken)
+                .ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(
+                ex,
+                "Automatic migration of database {DatabaseName} from storage provider {Source} to "
+                + "{Target} failed; opening it on {Source} instead. Nothing was moved and the "
+                + "binding is unchanged.",
+                databaseName,
+                source.Name,
+                target.Name,
+                source.Name);
+            return false;
+        }
     }
 }

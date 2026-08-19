@@ -5,7 +5,9 @@
 // synchronous build at all, and the two builds that can host it differ by more than a factor of two
 // in download size, so the cheapest capable build wins.
 
-import { raiseFunctionTableLimit } from './blazor-sqlite-wasm-table.js';
+// Imported dynamically so this module's cache key travels with it: see the note in the worker.
+const { raiseFunctionTableLimit } =
+  await import('./blazor-sqlite-wasm-table.js' + new URL(import.meta.url).search);
 import * as SQLite from './engine/sqlite-api.js';
 
 /** Which engine build a VFS needs. Mirrors BlazorSqliteEngineBuild on the .NET side. */

@@ -64,6 +64,16 @@ jobs:
         with:
           node-version: '22.x'
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # The engine builds under src/BlazorSqlite/wwwroot/engine are vendored at restore, not
+      # committed, and the wasm-table test reads them - so a restore is needed even though nothing
+      # .NET runs here.
+      - name: Vendor the engine
+        run: dotnet restore src/BlazorSqlite/BlazorSqlite.csproj
+
       # node:test only, no dependencies. The directory has no package.json, so the files are passed
       # as a glob rather than as a directory.
       - name: Run

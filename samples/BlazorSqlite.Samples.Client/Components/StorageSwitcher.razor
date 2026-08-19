@@ -9,6 +9,7 @@
             <p class="storage-name">@SampleStorage.Title(CurrentName)</p>
         </div>
     </div>
+    <p class="storage-blurb">@SampleStorage.Blurb(CurrentName)</p>
     <label class="storage-pick">
         <span>Backend</span>
         <select @bind="_target" disabled="@_busy">

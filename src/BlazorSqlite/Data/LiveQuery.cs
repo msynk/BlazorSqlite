@@ -8,12 +8,18 @@ public sealed class LiveQuery<T> : ILiveQuery<T>
     private readonly BlazorSqliteConnection _connection;
     private readonly Func<CancellationToken, Task<T>> _execute;
     private readonly HashSet<string> _tables;
-    private readonly List<TaskCompletionSource<T>> _waiters = [];
+    private readonly List<TaskCompletionSource> _waiters = [];
     private readonly Action? _onDispose;
     private readonly Lock _refreshGate = new();
     private bool _refreshing;
     private bool _refreshRequested;
     private int _disposed;
+
+    // Guarded by _waiters. Every published snapshot bumps the version, so an enumerator that was
+    // busy yielding while a refresh completed can tell it missed one and catch up rather than
+    // waiting for the next.
+    private long _version;
+    private T? _latest;
 
     /// <summary>How many times one notification's refresh is attempted before it is given up on.</summary>
     private const int RefreshAttempts = 2;
@@ -60,33 +66,63 @@ public sealed class LiveQuery<T> : ILiveQuery<T>
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         var snapshot = await _execute(cancellationToken).ConfigureAwait(false);
         Current = snapshot;
-        Changed?.Invoke(this, snapshot);
+
+        // Enumerators first, so a Changed handler that throws cannot starve them of a result.
         Publish(snapshot);
+        Changed?.Invoke(this, snapshot);
         return snapshot;
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Yields the current result first, then every result of a later refresh. A refresh that
+    /// completes while the consumer is still processing the previous item is not lost: the next
+    /// iteration yields its snapshot at once instead of waiting for another write.
+    /// </remarks>
     public async IAsyncEnumerable<T> WithCancellation([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        yield return await RefreshAsync(cancellationToken).ConfigureAwait(false);
+        var first = await RefreshAsync(cancellationToken).ConfigureAwait(false);
+
+        // Captured before yielding: the consumer may take a while to come back for the next item.
+        long seenVersion;
+        lock (_waiters)
+        {
+            seenVersion = _version;
+        }
+
+        yield return first;
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var waiter = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource? waiter = null;
             lock (_waiters)
             {
-                _waiters.Add(waiter);
+                if (_version == seenVersion)
+                {
+                    waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _waiters.Add(waiter);
+                }
             }
 
-            using var registration = cancellationToken.Register(() => waiter.TrySetCanceled(cancellationToken));
-            T snapshot;
-            try
+            if (waiter is not null)
             {
-                snapshot = await waiter.Task.ConfigureAwait(false);
+                using var registration = cancellationToken.Register(() => waiter.TrySetCanceled(cancellationToken));
+                try
+                {
+                    await waiter.Task.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    yield break;
+                }
             }
-            catch (OperationCanceledException)
+
+            // Always the newest snapshot, whatever woke us: an intermediate one is stale by now.
+            T snapshot;
+            lock (_waiters)
             {
-                yield break;
+                seenVersion = _version;
+                snapshot = _latest!;
             }
 
             yield return snapshot;
@@ -196,16 +232,18 @@ public sealed class LiveQuery<T> : ILiveQuery<T>
 
     private void Publish(T snapshot)
     {
-        List<TaskCompletionSource<T>> waiters;
+        List<TaskCompletionSource> waiters;
         lock (_waiters)
         {
+            _version++;
+            _latest = snapshot;
             waiters = [.. _waiters];
             _waiters.Clear();
         }
 
         foreach (var waiter in waiters)
         {
-            waiter.TrySetResult(snapshot);
+            waiter.TrySetResult();
         }
     }
 }

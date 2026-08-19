@@ -67,7 +67,10 @@ is the default; `AutomaticOnOpen` copies the image, verifies the SQLite header, 
 
 ## Live queries
 
-Table-level, and they fire across tabs. A write re-runs any live query that reads that table.
+Table-level, and they fire across tabs. A committed write re-runs any live query that reads that
+table. The worker learns what changed from SQLite's own update hook - cascades and triggers included -
+and reports it once the transaction commits, so a rolled-back write is never shown and a
+multi-statement `SaveChangesAsync` re-runs a query once, not per statement.
 
 ```csharp
 await using var live = ctx.Orders.Where(o => o.Open).AsLiveQuery();
@@ -79,6 +82,21 @@ live.Changed += (_, rows) => InvokeAsync(StateHasChanged);
 The browser cannot block on storage, so the synchronous ADO.NET surface throws
 `BlazorSqliteSynchronousApiNotSupportedException` rather than deadlocking or lying. Use the `Async`
 overloads throughout — `ToListAsync`, `SaveChangesAsync`, `MigrateAsync`.
+
+## Hosting under a sub-path
+
+Every asset is reached relative to the document, the way Blazor's own are, so an application published
+under `<base href="/app/">` needs no configuration: the host resolves each provider's VFS module against
+the document base before the worker imports it.
+
+## Caching the browser assets
+
+The host module is imported with a `?v=<assembly version>` query and passes it on to the worker and
+the modules it loads, so an upgrade cannot pair new .NET with JavaScript the browser cached from an
+older version. The engine files under `_content/BlazorSqlite/engine` carry no query - they change only
+when the pinned wa-sqlite version does - so if your server sends long `max-age` headers for static
+content, exclude `_content/BlazorSqlite/` or serve it with `Cache-Control: no-cache` so the browser
+revalidates, as the sample's server does in development.
 
 ## Links
 

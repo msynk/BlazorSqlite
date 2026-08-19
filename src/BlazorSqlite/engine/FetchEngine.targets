@@ -13,7 +13,7 @@
   -->
 
   <PropertyGroup>
-    <WaSqliteEngineDirectory>$(MSBuildProjectDirectory)\wwwroot\engine\</WaSqliteEngineDirectory>
+    <WaSqliteEngineDirectory>$(MSBuildProjectDirectory)/wwwroot/engine/</WaSqliteEngineDirectory>
   </PropertyGroup>
 
   <Target Name="FetchWaSqliteEngine" BeforeTargets="CollectPackageReferences">

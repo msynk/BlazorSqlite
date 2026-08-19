@@ -1,11 +1,21 @@
 // The main-thread half of the transport: spawns the worker that owns a database and correlates
 // requests with responses. This is the surface the .NET transport calls.
 
-const DEFAULT_WORKER_URL = new URL('./blazor-sqlite-worker.js', import.meta.url).href;
+// Everything this module reaches for inherits the cache-busting query it was imported with, so an
+// upgrade cannot pair a fresh host with a worker - or a wire module - the browser still holds from
+// an older version.
+const VERSION = new URL(import.meta.url).search;
+
+const DEFAULT_WORKER_URL = new URL('./blazor-sqlite-worker.js' + VERSION, import.meta.url).href;
 
 // Re-exported so a JavaScript caller can work in plain values without importing the wire module and
-// without inventing a second, divergent encoding. The .NET transport does the same work in C#.
-export { decodeValue, encodeValue, WireType } from './blazor-sqlite-wire.js';
+// without inventing a second, divergent encoding. The .NET transport does the same work in C#. The
+// import is dynamic only to carry VERSION: a `export ... from` would resolve to the bare path.
+const wire = await import('./blazor-sqlite-wire.js' + VERSION);
+
+export const decodeValue = wire.decodeValue;
+export const encodeValue = wire.encodeValue;
+export const WireType = wire.WireType;
 
 /**
  * Starts a worker for one database.
@@ -38,13 +48,15 @@ export function createHost(workerUrl) {
 }
 
 /**
- * Forwards another tab's writes to a .NET object, which is how a live query re-runs when the tab
- * that wrote is not this one.
+ * Forwards committed writes to a .NET object, which is how a live query re-runs - for this tab's
+ * own writes and for another tab's alike.
  *
- * Only remote writes are forwarded. The .NET command layer already raises its own writes the moment
- * they complete, so relaying them again would re-run every live query twice per write. Writes to a
- * different database on the same origin are dropped as well: the broadcast channel is origin-wide,
- * so it carries every database's traffic, and the name is the only thing that separates them.
+ * Both are forwarded because the worker is the one that knows: its update hook names every table a
+ * row landed in, cascades and triggers included, and it waits for the commit. The .NET transport
+ * declares `ReportsLocalWrites` so the command layer does not raise the same write again from the
+ * SQL text. Writes to a different database on the same origin are dropped: the broadcast channel is
+ * origin-wide, so it carries every database's traffic, and the name is the only thing that
+ * separates them.
  *
  * @param {SqliteHost} host
  * @param {{invokeMethodAsync: (name: string, ...args: unknown[]) => Promise<unknown>}} target
@@ -52,8 +64,8 @@ export function createHost(workerUrl) {
  * @param {string} [method] the [JSInvokable] method to call with the table names
  */
 export function listen(host, target, databaseName, method = 'OnTablesChanged') {
-  return host.onNotify((payload, info) => {
-    if (info?.local || payload.databaseName !== databaseName) {
+  return host.onNotify(payload => {
+    if (payload.databaseName !== databaseName) {
       return;
     }
 
@@ -69,6 +81,7 @@ class SqliteHost {
   #pending = new Map();
   #nextId = 1;
   #disposed = false;
+  #fatal = null;
   #listeners = new Set();
   #channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(CHANGE_CHANNEL) : null;
 
@@ -77,9 +90,14 @@ class SqliteHost {
     this.#worker.addEventListener('message', event => this.#settle(event.data));
     this.#channel?.addEventListener('message', event => this.#emit(event.data, { local: false }));
 
-    // A worker that dies with requests outstanding must not leave them pending forever.
-    this.#worker.addEventListener('error', event => this.#failAll(
-      new Error(`The SQLite worker failed: ${event.message ?? 'unknown error'}`)));
+    // A worker that dies with requests outstanding must not leave them pending forever - and one
+    // that died must not swallow later requests either. The worker script wraps every request in
+    // its own catch, so an error event here means the script itself failed to load or link: there
+    // is nobody on the other end, and every request from now on gets told so instead of hanging.
+    this.#worker.addEventListener('error', event => {
+      this.#fatal = new Error(`The SQLite worker failed: ${event.message ?? 'unknown error'}`);
+      this.#failAll(this.#fatal);
+    });
 
     // A reply that cannot be deserialized never reaches #settle, so its request would wait for an
     // answer that has already been thrown away. The id is gone with it, so every outstanding
@@ -147,11 +165,15 @@ class SqliteHost {
       return Promise.reject(new Error('This SQLite host has been disposed.'));
     }
 
+    if (this.#fatal) {
+      return Promise.reject(this.#fatal);
+    }
+
     const id = this.#nextId++;
 
     return new Promise((resolve, reject) => {
       this.#pending.set(id, { resolve, reject });
-      this.#worker.postMessage({ ...request, id });
+      this.#worker.postMessage({ ...resolveModuleUrls(request), id });
     });
   }
 
@@ -209,6 +231,25 @@ class SqliteHost {
     this.#channel?.close();
     this.#worker.terminate();
   }
+}
+
+/**
+ * Makes a storage provider's VFS module URL absolute before it reaches the worker.
+ *
+ * Providers name their module the way every other Blazor asset is named - relative to the document,
+ * as `./_content/<package>/<file>.js` - so an application served under a sub-path still finds it.
+ * The worker cannot resolve that itself: a relative import there is relative to the worker script,
+ * which lives in this package's own `_content` folder. Resolving here, where the document base is
+ * known, keeps that detail out of every provider.
+ */
+function resolveModuleUrls(request) {
+  const moduleUrl = request?.vfs?.moduleUrl;
+  if (typeof moduleUrl !== 'string' || moduleUrl.length === 0) {
+    return request;
+  }
+
+  const base = globalThis.document?.baseURI ?? globalThis.location?.href ?? import.meta.url;
+  return { ...request, vfs: { ...request.vfs, moduleUrl: new URL(moduleUrl, base).href } };
 }
 
 /**

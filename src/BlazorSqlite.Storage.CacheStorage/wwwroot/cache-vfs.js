@@ -5,9 +5,9 @@
 // coordinated by WebLocksMixin. A database that exists only in besql's `bit-Besql` cache is
 // imported losslessly on first open and then served from our own layout.
 
-import { FacadeVFS } from '/_content/BlazorSqlite/engine/FacadeVFS.js';
-import * as VFS from '/_content/BlazorSqlite/engine/VFS.js';
-import { WebLocksMixin } from '/_content/BlazorSqlite/engine/WebLocksMixin.js';
+import { FacadeVFS } from '../BlazorSqlite/engine/FacadeVFS.js';
+import * as VFS from '../BlazorSqlite/engine/VFS.js';
+import { WebLocksMixin } from '../BlazorSqlite/engine/WebLocksMixin.js';
 
 export const VFS_NAME = 'cache-storage';
 export const CACHE_NAME = 'blazor-sqlite';
@@ -86,6 +86,30 @@ export class CacheStorageVFS extends WebLocksMixin(FacadeVFS) {
     const size = await this.#readSize(pathOf(zName));
     pResOut.setInt32(0, size === null ? 0 : 1, true);
     return VFS.SQLITE_OK;
+  }
+
+  /**
+   * On taking a shared lock, re-reads the file size another tab may have changed.
+   *
+   * The size is cached per open file, and it is the one fact SQLite asks the VFS for at the start
+   * of every read transaction to decide how many pages the database has. A tab that opened while
+   * the file was small and kept the number would read past nothing after another tab appended
+   * pages - a "no such table" for a table that plainly exists. The lock is the moment the other
+   * writer is guaranteed to have flushed, so this is where the number is refreshed.
+   */
+  async jLock(fileId, lockType) {
+    const result = await super.jLock(fileId, lockType);
+    if (result === VFS.SQLITE_OK && lockType === VFS.SQLITE_LOCK_SHARED) {
+      const file = this.mapIdToFile.get(fileId);
+      if (file) {
+        const size = await this.#readSize(file.path);
+        if (size !== null) {
+          file.size = size;
+        }
+      }
+    }
+
+    return result;
   }
 
   async jClose(fileId) {

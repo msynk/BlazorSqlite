@@ -3,11 +3,11 @@
 
 <SessionLifecycle OnReady="LoadAsync" OnTearDown="UnloadAsync" />
 
-<p class="lead">
-    This tab is a real SQLite database. The same EF Core model - decimals, GUIDs, dates,
-    enums, live queries - runs through BlazorSqlite on whatever backend you pick above.
-    Nothing here talks to the server except the WASM download.
-</p>
+<PageHeader Kicker="Overview" Title="A real SQLite database, inside this browser tab">
+    The same EF Core model you would run on a server - decimals, GUIDs, dates, enums, foreign
+    keys, migrations - runs here through BlazorSqlite, on whichever storage backend the bar above
+    selected. After the WASM download, nothing on these pages talks to the server.
+</PageHeader>
 
 @if (_error is not null)
 {
@@ -33,66 +33,152 @@
     </section>
 </div>
 
-<div class="grid" style="margin-top:1rem">
+<div class="stack-lg">
+    <DemoCard Step="Step 1"
+              Title="Install and register"
+              CodeTitle="Program.cs"
+              Code="@Snippets.Setup.Registration">
+        <Description>
+            The core package carries the engine, the worker, and the storage contract. Each
+            persistent backend is its own package, so an app ships only the ones it registers.
+            Order is preference, not a hard requirement: the first available backend wins.
+        </Description>
+        <Extra>
+            <CodeBlock Title="Packages" Language="shell" Code="@Snippets.Setup.Install" Open="false" />
+        </Extra>
+    </DemoCard>
+
+    <DemoCard Step="Step 2"
+              Title="Open a session, hand EF the connection"
+              CodeTitle="BrowserDatabase.cs"
+              Code="@Snippets.Setup.OpenContext">
+        <Description>
+            <span>
+                A session owns the worker, the transport, and one ADO.NET connection.
+                <code>UseBlazorSqlite(connection)</code> is <code>UseSqlite</code> plus the two
+                service replacements that would otherwise call <code>DbConnection.Open()</code>
+                synchronously. SQL generation is the stock SQLite provider's, unchanged.
+            </span>
+        </Description>
+    </DemoCard>
+
+    <DemoCard Step="Step 3"
+              Title="Query it, and stay in sync"
+              CodeTitle="Pages/Home.razor"
+              Code="@Snippets.Home.LiveQuery">
+        <Description>
+            <span>
+                <code>AsLiveQuery()</code> re-runs a query whenever a table it reads is written -
+                by this tab, by another tab, or by raw SQL that never went through EF.
+            </span>
+        </Description>
+        <Try>
+            <span>
+                Add a product on <a href="catalog">Catalog</a>, or open this page in a second tab
+                and edit there. The list below re-runs on its own.
+            </span>
+        </Try>
+        <ChildContent>
+            @if (_liveRows.Count == 0)
+            {
+                <p class="empty">No products yet.</p>
+            }
+            else
+            {
+                <div class="scroll-x">
+                    <table>
+                        <thead>
+                        <tr><th>SKU</th><th>Name</th><th>Price</th><th>Active</th></tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var product in _liveRows)
+                        {
+                            <tr>
+                                <td class="mono">@product.Sku</td>
+                                <td>@product.Name</td>
+                                <td>@SampleFormat.Money(product.Price)</td>
+                                <td>@(product.IsActive ? "yes" : "no")</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </ChildContent>
+    </DemoCard>
+
+    <DemoCard Title="CLR types stored in SQLite"
+              CodeTitle="Product.cs"
+              Code="@Snippets.Home.Entity">
+        <Description>
+            SQLite has four storage classes. The ADO.NET binder decides which one each CLR value
+            takes, so the worker never guesses and values round-trip as the type you wrote. The
+            numbers in the cards above come from the counts below them.
+        </Description>
+        <ChildContent>
+            <div class="scroll-x">
+                <table class="type-table">
+                    <thead><tr><th>CLR</th><th>SQLite</th><th>Where in this sample</th></tr></thead>
+                    <tbody>
+                    <tr><td><code>decimal</code></td><td>TEXT + <code>ef_*</code></td><td>Price, credit limit</td></tr>
+                    <tr><td><code>DateTime</code></td><td>TEXT ISO</td><td>CreatedUtc</td></tr>
+                    <tr><td><code>DateTimeOffset</code></td><td>TEXT + offset</td><td>OrderedAt</td></tr>
+                    <tr><td><code>DateOnly</code></td><td>TEXT date</td><td>Date of birth, ship-by</td></tr>
+                    <tr><td><code>TimeSpan</code></td><td>TEXT <code>c</code></td><td>Lead time</td></tr>
+                    <tr><td><code>Guid</code></td><td>TEXT</td><td>PublicId</td></tr>
+                    <tr><td><code>bool</code></td><td>INTEGER 0/1</td><td>IsActive, IsVip</td></tr>
+                    <tr><td><code>enum</code></td><td>TEXT</td><td>Order status</td></tr>
+                    <tr><td><code>double</code></td><td>REAL</td><td>Weight</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </ChildContent>
+        <Extra>
+            <CodeBlock Title="Pages/Home.razor - the counts above" Language="csharp"
+                       Code="@Snippets.Home.Counts" Open="false" />
+        </Extra>
+    </DemoCard>
+
     <section class="card">
-        <h2>Live catalog</h2>
-        <p>
-            <code>AsLiveQuery()</code> on <code>Products</code>. Add a row on
-            <a href="catalog">Catalog</a> - this list re-runs, including from another tab.
-        </p>
-        @if (_liveRows.Count == 0)
-        {
-            <p>No products yet.</p>
-        }
-        else
-        {
+        <h2>Where to go next</h2>
+        <p>Each page pairs a working demo with the exact code that drives it.</p>
+        <div class="scroll-x">
             <table>
-                <thead>
-                <tr><th>SKU</th><th>Name</th><th>Price</th><th>Active</th></tr>
-                </thead>
+                <thead><tr><th>Page</th><th>What it shows</th></tr></thead>
                 <tbody>
-                @foreach (var product in _liveRows)
-                {
-                    <tr>
-                        <td class="mono">@product.Sku</td>
-                        <td>@product.Name</td>
-                        <td>@SampleFormat.Money(product.Price)</td>
-                        <td>@(product.IsActive ? "yes" : "no")</td>
-                    </tr>
-                }
+                <tr>
+                    <td><a href="catalog">Catalog</a></td>
+                    <td>CRUD over a related graph: unique SKU, <code>decimal</code> price, <code>TimeSpan</code> lead time, nullable <code>DateOnly</code>.</td>
+                </tr>
+                <tr>
+                    <td><a href="customers">Customers</a></td>
+                    <td><code>Guid</code> keys, a unique index the engine enforces, VIP flag, decimal credit limits.</td>
+                </tr>
+                <tr>
+                    <td><a href="orders">Orders</a></td>
+                    <td>Master-detail with <code>Include</code>/<code>ThenInclude</code>, string-backed enum, <code>DateTimeOffset</code>, restrict FKs.</td>
+                </tr>
+                <tr>
+                    <td><a href="queries">SQL</a></td>
+                    <td>Generated SQL, <code>ef_compare</code> on decimals, <code>REGEXP</code>, and plain ADO.NET on the same connection.</td>
+                </tr>
+                <tr>
+                    <td><a href="storage">Storage</a></td>
+                    <td>How a backend is chosen, what each one can do, quota probes, persistent-storage permission.</td>
+                </tr>
+                <tr>
+                    <td><a href="admin">Admin</a></td>
+                    <td>Databases as files: list, export to a <code>.db</code>, import one back, delete.</td>
+                </tr>
+                <tr>
+                    <td><a href="limits">Limits</a></td>
+                    <td>What the web cannot do - sync APIs, WAL, <code>ATTACH</code>, page size - and how it fails.</td>
+                </tr>
                 </tbody>
             </table>
-        }
-    </section>
-    <section class="card">
-        <h2>CLR types stored in SQLite</h2>
-        <p>The ADO.NET binder owns the TEXT/INTEGER/REAL choice so the worker never has to guess.</p>
-        <table class="type-table">
-            <thead><tr><th>CLR</th><th>SQLite</th><th>Where</th></tr></thead>
-            <tbody>
-            <tr><td><code>decimal</code></td><td>TEXT + <code>ef_*</code></td><td>Price, credit limit</td></tr>
-            <tr><td><code>DateTime</code></td><td>TEXT ISO</td><td>CreatedUtc</td></tr>
-            <tr><td><code>DateTimeOffset</code></td><td>TEXT + offset</td><td>OrderedAt</td></tr>
-            <tr><td><code>DateOnly</code></td><td>TEXT date</td><td>Date of birth, ship-by</td></tr>
-            <tr><td><code>TimeSpan</code></td><td>TEXT <code>c</code></td><td>Lead time</td></tr>
-            <tr><td><code>Guid</code></td><td>TEXT</td><td>PublicId</td></tr>
-            <tr><td><code>bool</code></td><td>INTEGER 0/1</td><td>IsActive, IsVip</td></tr>
-            <tr><td><code>enum</code></td><td>TEXT</td><td>Order status</td></tr>
-            </tbody>
-        </table>
+        </div>
     </section>
 </div>
-
-<section class="card" style="margin-top:1rem">
-    <h2>Where to go next</h2>
-    <ul class="plain">
-        <li><a href="catalog">Catalog</a> - categories and products, including discontinued <code>DateOnly?</code> rows.</li>
-        <li><a href="customers">Customers</a> - GUIDs, VIP flag, decimal credit limits.</li>
-        <li><a href="orders">Orders</a> - master-detail lines, enum status, <code>DateTimeOffset</code>.</li>
-        <li><a href="storage">Storage</a> - probes, capabilities, persistent-storage permission.</li>
-        <li><a href="queries">SQL</a> - generated SQL, <code>ef_compare</code>, <code>REGEXP</code>.</li>
-    </ul>
-</section>
 
 @code {
     private AppDbContext? _context;

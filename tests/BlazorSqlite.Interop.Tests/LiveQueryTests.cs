@@ -107,6 +107,51 @@ public sealed class LiveQueryTests
         Assert.Equal(0, seen);
     }
 
+    /// <summary>
+    /// A consumer that is busy with one item while the next refresh lands must not wait for a
+    /// further write to see it - and when it catches up it gets the newest snapshot, not a stale
+    /// intermediate one.
+    /// </summary>
+    [Fact]
+    public async Task WithCancellation_CatchesUpOnRefreshesItWasNotWaitingFor()
+    {
+        var transport = new RemoteWriteTransport();
+        await using var connection = new BlazorSqliteConnection(transport, "live-enumerate.db");
+        await connection.OpenAsync(Ct);
+
+        var runs = 0;
+        await using var live = new LiveQuery<int>(
+            connection,
+            _ => Task.FromResult(Interlocked.Increment(ref runs)),
+            ["product"]);
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+#pragma warning disable xUnit1051 // The enumerator's own token is the subject: it is cancelled below.
+        await using var enumerator = live.WithCancellation(cts.Token).GetAsyncEnumerator(cts.Token);
+#pragma warning restore xUnit1051
+
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.Equal(1, enumerator.Current);
+
+        // Two refreshes complete while nobody is awaiting MoveNextAsync.
+        await live.RefreshAsync(Ct);
+        await live.RefreshAsync(Ct);
+
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.Equal(3, enumerator.Current);
+
+        // Nothing new now, so the next item has to wait for the next refresh.
+        var pending = enumerator.MoveNextAsync();
+        Assert.False(pending.IsCompleted);
+
+        await live.RefreshAsync(Ct);
+        Assert.True(await pending);
+        Assert.Equal(4, enumerator.Current);
+
+        await cts.CancelAsync();
+        Assert.False(await enumerator.MoveNextAsync());
+    }
+
     /// <summary>A transport that can be told to speak for another tab.</summary>
     private sealed class RemoteWriteTransport : ISqliteTransport
     {
