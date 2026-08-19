@@ -6,6 +6,8 @@
 // Values that JSON cannot carry are tagged again on the way out to Playwright, so that "came back as a
 // 64-bit integer" and "came back as a blob" stay observable instead of being silently coerced.
 
+import { test } from '@playwright/test';
+
 /**
  * Loads the host page and opens a database.
  *
@@ -100,4 +102,18 @@ export function executeExpectingFailure(page, batch) {
       return { message: error.message, sqliteCode: error.sqliteCode ?? null, name: error.name };
     }
   }, batch);
+}
+
+/**
+ * Skips the current test where the browser has no OPFS.
+ *
+ * Playwright's own WebKit builds expose no `navigator.storage` at all - not in the window, not in a
+ * worker, secure context notwithstanding - so anything that opens an OPFS database there fails before
+ * SQLite is involved. Safari proper has OPFS; the tests are skipped rather than failed so the suite
+ * still reports on what that WebKit can exercise (IndexedDB, Cache Storage, the engine itself).
+ */
+export async function skipUnlessOpfs(page, path = '/index.html') {
+  await page.goto(path);
+  const available = await page.evaluate(() => typeof navigator.storage?.getDirectory === 'function');
+  test.skip(!available, 'this browser has no navigator.storage.getDirectory, so OPFS cannot be tested');
 }

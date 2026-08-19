@@ -12,6 +12,15 @@ const CACHE_LIMITS = {
 };
 
 test.describe('Cache Storage persistence', () => {
+  // Playwright's WebKit runs with an ephemeral data store, and its Cache Storage keeps a cache's
+  // entries only while some context holds that cache open: when the worker that wrote them is the
+  // sole holder and is terminated, the entries are gone (the cache name survives, its contents do
+  // not). Every test here restarts the worker and expects to read back what it wrote, which is
+  // exactly what that store cannot do. The multi-tab tests below, where another tab holds the cache
+  // open the whole time, do run there.
+  test.skip(({ browserName }) => browserName === 'webkit',
+    "Playwright's WebKit discards Cache Storage entries once no context holds the cache open");
+
   test('survives a worker restart', async ({ page }) => {
     const databaseName = uniqueName('persist');
     await openCache(page, databaseName);

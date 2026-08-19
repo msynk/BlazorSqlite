@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { exec, executeExpectingFailure, openHost, query } from './host.js';
+import { exec, executeExpectingFailure, openHost, query, skipUnlessOpfs } from './host.js';
 
 const OPFS_VFS = {
   moduleUrl: '/_content/BlazorSqlite.Storage.Opfs/opfs-vfs.js',
@@ -10,6 +10,9 @@ const OPFS_LIMITS = {
   supportsMultiDatabaseTransactions: false,
   canChangePageSize: true,
 };
+
+// Every test here needs OPFS, including the multi-tab ones that open their own pages.
+test.beforeEach(({ page }) => skipUnlessOpfs(page));
 
 test.describe('OPFS persistence', () => {
   test('survives a worker restart', async ({ page }) => {

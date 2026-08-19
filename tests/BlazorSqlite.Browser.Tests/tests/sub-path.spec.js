@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { skipUnlessOpfs } from './host.js';
 
 /**
  * A Blazor application is routinely published under a sub-path - GitHub Pages, an IIS virtual
@@ -17,6 +18,10 @@ test.describe('hosting under a sub-path', () => {
 
   for (const provider of providers) {
     test(`${provider.name} opens through a document-relative module URL`, async ({ page }) => {
+      if (provider.name === 'opfs') {
+        await skipUnlessOpfs(page, '/nested/index.html');
+      }
+
       await page.goto('/nested/index.html');
       await page.waitForFunction(() => globalThis.BlazorSqliteReady === true);
 
