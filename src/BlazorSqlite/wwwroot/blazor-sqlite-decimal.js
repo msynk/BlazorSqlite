@@ -286,8 +286,13 @@ function align(a, b) {
 }
 
 /**
- * Fits a coefficient into 96 bits and a scale of 0–28, rounding with banker's rounding when a
- * digit has to be dropped.
+ * Fits a coefficient into 96 bits and a scale of 0–28, rounding with banker's rounding when digits
+ * have to be dropped.
+ *
+ * All the surplus digits go in one division, and the whole discarded remainder decides the
+ * rounding - which is what System.Decimal does. Dropping them one at a time and rounding at each
+ * step is not the same thing: `…51` dropped digit by digit rounds down (1 is below half, then 5
+ * ties to even), while the true remainder 0.51 is above half and rounds up.
  *
  * @param {1|-1} sign
  * @param {bigint} coeff
@@ -298,17 +303,35 @@ function fit(sign, coeff, scale) {
     throw new Error('fit() expects an unsigned coefficient.');
   }
 
-  while (coeff > MAX_COEFF || scale > MAX_SCALE) {
-    if (scale === 0 && coeff > MAX_COEFF) {
-      throw new DecimalOverflowError();
-    }
+  let drop = Math.max(0, scale - MAX_SCALE);
+  while (coeff / 10n ** BigInt(drop) > MAX_COEFF) {
+    drop++;
+  }
 
-    const digit = coeff % 10n;
-    coeff /= 10n;
-    scale--;
+  if (drop > scale) {
+    throw new DecimalOverflowError();
+  }
 
-    if (digit > 5n || (digit === 5n && (coeff & 1n) === 1n)) {
+  if (drop > 0) {
+    const divisor = 10n ** BigInt(drop);
+    const remainder = coeff % divisor;
+    coeff /= divisor;
+    scale -= drop;
+
+    const twice = remainder * 2n;
+    if (twice > divisor || (twice === divisor && (coeff & 1n) === 1n)) {
       coeff += 1n;
+
+      // Rounding up from the largest 96-bit coefficient carries out of it: 2^96 has to lose one
+      // more digit, and its own remainder (…6) rounds that up too - the same as System.Decimal.
+      if (coeff > MAX_COEFF) {
+        if (scale === 0) {
+          throw new DecimalOverflowError();
+        }
+
+        coeff = coeff / 10n + 1n;
+        scale--;
+      }
     }
   }
 

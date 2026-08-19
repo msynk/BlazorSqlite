@@ -14,8 +14,8 @@ if (!input || !output) {
 }
 
 const replacements = [
-  ["from '../FacadeVFS.js'", "from '/_content/BlazorSqlite/engine/FacadeVFS.js'"],
-  ["from '../VFS.js'", "from '/_content/BlazorSqlite/engine/VFS.js'"],
+  ["from '../FacadeVFS.js'", "from '../BlazorSqlite/engine/FacadeVFS.js'"],
+  ["from '../VFS.js'", "from '../BlazorSqlite/engine/VFS.js'"],
 ];
 
 let source = readFileSync(input, 'utf8');

@@ -487,7 +487,11 @@ internal static class Snippets
             // preferred backend and the import would look like it vanished.
             await Database.Bindings.SetProviderNameAsync("app.db", provider.Name);
 
-            await Database.OpenContextAsync();
+            // Reopen once so migrations run before the pages come back for the database.
+            await using (await Database.OpenContextAsync())
+            {
+            }
+
             await Database.NotifySessionChangedAsync();
             """;
 
@@ -499,7 +503,10 @@ internal static class Snippets
             // Forget the binding so selection is free to pick the preferred backend again.
             await Database.Bindings.RemoveAsync("app.db");
 
-            await Database.OpenContextAsync();   // migrates and reseeds an empty database
+            // Migrates and reseeds the now-empty database.
+            await using (await Database.OpenContextAsync())
+            {
+            }
             """;
     }
 

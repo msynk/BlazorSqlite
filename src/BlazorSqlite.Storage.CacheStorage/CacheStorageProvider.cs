@@ -17,9 +17,15 @@ public sealed class CacheStorageProvider : IBlazorSqliteStorageProvider
 
     public const string VfsName = "cache-storage";
 
-    public const string VfsModuleUrl = "/_content/BlazorSqlite.Storage.CacheStorage/cache-register.js";
+    /// <summary>
+    /// The VFS module, named the way every Blazor static asset is named - relative to the
+    /// document - so an application served under a sub-path still finds it. The worker host
+    /// resolves it against the document base before the worker imports it.
+    /// </summary>
+    public const string VfsModuleUrl = "./_content/BlazorSqlite.Storage.CacheStorage/cache-register.js";
 
-    public const string AdminModuleUrl = "/_content/BlazorSqlite.Storage.CacheStorage/cache-admin.js";
+    /// <summary>The admin module, imported on the main thread relative to the document.</summary>
+    public const string AdminModuleUrl = "./_content/BlazorSqlite.Storage.CacheStorage/cache-admin.js";
 
     private readonly IJSRuntime? _js;
 

@@ -237,7 +237,12 @@
             await Database.CloseSessionAsync();
             await provider.Admin.ImportAsync(BrowserDatabase.DatabaseName, _importBytes);
             await Database.Bindings.SetProviderNameAsync(BrowserDatabase.DatabaseName, provider.Name);
-            await Database.OpenContextAsync();
+
+            // Reopened here so migrations and the seed run before the pages come back for it.
+            await using (await Database.OpenContextAsync())
+            {
+            }
+
             await Database.NotifySessionChangedAsync();
             _info = $"Imported into {provider.Name} and reopened. Catalog and orders will refresh.";
             await ListAllAsync();
@@ -265,7 +270,11 @@
             await Database.CloseSessionAsync();
             await provider.Admin.DeleteAsync(BrowserDatabase.DatabaseName);
             await Database.Bindings.RemoveAsync(BrowserDatabase.DatabaseName);
-            await Database.OpenContextAsync();
+
+            await using (await Database.OpenContextAsync())
+            {
+            }
+
             await Database.NotifySessionChangedAsync();
             _info = "Deleted and reopened. Migrations ran again; the workshop catalog was reseeded if empty.";
             await ListAllAsync();

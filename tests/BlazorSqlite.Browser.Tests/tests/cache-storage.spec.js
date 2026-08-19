@@ -94,6 +94,50 @@ test.describe('Cache Storage admin', () => {
   });
 });
 
+test.describe('Cache Storage multi-tab', () => {
+  test('a second tab sees a committed write', async ({ browser }) => {
+    const databaseName = uniqueName('tabs');
+    const context = await browser.newContext();
+    const first = await context.newPage();
+    const second = await context.newPage();
+
+    try {
+      await openCache(first, databaseName);
+      await exec(first, 'CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT)');
+      await exec(first, "INSERT INTO product (name) VALUES ('Shared')");
+
+      await openCache(second, databaseName);
+      expect((await query(second, 'SELECT name FROM product')).rows).toEqual([['Shared']]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  /**
+   * The harder order: the reader opened while the file was still empty. Its VFS cached a size of
+   * zero, and every read transaction since has to notice that the other tab grew the file.
+   */
+  test('a tab that opened first sees a write that grew the file', async ({ browser }) => {
+    const databaseName = uniqueName('grow');
+    const context = await browser.newContext();
+    const reader = await context.newPage();
+    const writer = await context.newPage();
+
+    try {
+      await openCache(reader, databaseName);
+      expect((await query(reader, "SELECT name FROM sqlite_master WHERE type = 'table'")).rows).toEqual([]);
+
+      await openCache(writer, databaseName);
+      await exec(writer, 'CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT)');
+      await exec(writer, "INSERT INTO product (name) VALUES ('Grown')");
+
+      expect((await query(reader, 'SELECT name FROM product')).rows).toEqual([['Grown']]);
+    } finally {
+      await context.close();
+    }
+  });
+});
+
 function uniqueName(label) {
   return `cache-${label}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }

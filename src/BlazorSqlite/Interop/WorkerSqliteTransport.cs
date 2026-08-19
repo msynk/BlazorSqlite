@@ -49,13 +49,21 @@ public sealed class WorkerSqliteTransport : ISqliteTransport
     /// <inheritdoc />
     public event EventHandler<SqliteTablesChangedEventArgs>? TablesChanged;
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// True: the worker reports what it wrote from SQLite's own update hook, cascades and triggers
+    /// included, and only once the transaction that wrote it has committed - which is more than
+    /// the command layer could learn from the SQL text.
+    /// </remarks>
+    public bool ReportsLocalWrites => true;
+
     /// <summary>
-    /// Called from <c>blazor-sqlite-host.js</c> when another tab reports a write to this database.
+    /// Called from <c>blazor-sqlite-host.js</c> when a committed write - this tab's or another's -
+    /// touched tables in this database.
     /// </summary>
     /// <remarks>
-    /// Public because <c>[JSInvokable]</c> requires it. The host module has already dropped this
-    /// transport's own writes and other databases' traffic, so everything arriving here is a remote
-    /// write to the database this transport opened.
+    /// Public because <c>[JSInvokable]</c> requires it. The host module has already dropped other
+    /// databases' traffic, so everything arriving here concerns the database this transport opened.
     /// </remarks>
     [JSInvokable]
     public void OnTablesChanged(string[] tables)

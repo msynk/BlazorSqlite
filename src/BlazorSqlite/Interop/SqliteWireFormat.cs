@@ -123,7 +123,7 @@ public static class SqliteWireFormat
                     + "64-bit signed INTEGER.");
 
             case float or double:
-                return (TypeCode.Real, Convert.ToDouble(value, CultureInfo.InvariantCulture));
+                return EncodeReal(Convert.ToDouble(value, CultureInfo.InvariantCulture));
 
             // Text, so that no precision is lost. Comparisons and arithmetic over these columns are
             // what the ef_* function set exists to make correct.
@@ -172,6 +172,23 @@ public static class SqliteWireFormat
 
     /// <summary>Microsoft.Data.Sqlite's decimal format string, reproduced exactly.</summary>
     private const string DecimalFormat = "0.0###########################";
+
+    /// <summary>
+    /// JSON has no spelling for the two IEEE values SQLite can hold, so they travel as the strings
+    /// <c>double.Parse</c> and JavaScript's <c>Number()</c> both read back. NaN is sent as NULL,
+    /// which is what SQLite stores for it anyway.
+    /// </summary>
+    private static (int Type, object? Value) EncodeReal(double value)
+    {
+        if (double.IsNaN(value))
+        {
+            return (TypeCode.Null, null);
+        }
+
+        return double.IsFinite(value)
+            ? (TypeCode.Real, value)
+            : (TypeCode.Real, value.ToString(CultureInfo.InvariantCulture));
+    }
 
     private static (int Type, object? Value) EncodeInteger(long value)
         => value is >= -MaxExactInteger and <= MaxExactInteger
@@ -336,7 +353,12 @@ public static class SqliteWireFormat
             _ => value.GetInt64(),
         },
 
-        TypeCode.Real => value.GetDouble(),
+        // Infinity has no JSON spelling either way, so it arrives as the string it was sent as.
+        TypeCode.Real => value.ValueKind switch
+        {
+            JsonValueKind.String => double.Parse(value.GetString()!, CultureInfo.InvariantCulture),
+            _ => value.GetDouble(),
+        },
         TypeCode.Text => value.GetString(),
         TypeCode.Blob => value.GetBytesFromBase64(),
 

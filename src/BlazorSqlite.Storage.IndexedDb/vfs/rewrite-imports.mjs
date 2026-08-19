@@ -12,9 +12,9 @@ if (!input || !output) {
 }
 
 const replacements = [
-  ["from '../FacadeVFS.js'", "from '/_content/BlazorSqlite/engine/FacadeVFS.js'"],
-  ["from '../VFS.js'", "from '/_content/BlazorSqlite/engine/VFS.js'"],
-  ["from '../WebLocksMixin.js'", "from '/_content/BlazorSqlite/engine/WebLocksMixin.js'"],
+  ["from '../FacadeVFS.js'", "from '../BlazorSqlite/engine/FacadeVFS.js'"],
+  ["from '../VFS.js'", "from '../BlazorSqlite/engine/VFS.js'"],
+  ["from '../WebLocksMixin.js'", "from '../BlazorSqlite/engine/WebLocksMixin.js'"],
 ];
 
 let source = readFileSync(input, 'utf8');

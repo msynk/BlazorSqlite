@@ -25,19 +25,21 @@ public interface ISqliteTransport : IAsyncDisposable
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Raised when a write this transport did not perform touched tables in the same database -
-    /// in practice, a write from another tab.
+    /// Raised when committed writes touched tables in the open database: another tab's writes
+    /// always, and this transport's own writes when <see cref="ReportsLocalWrites"/> is true.
     /// </summary>
     /// <remarks>
     /// <para>
     /// <see cref="BlazorSqliteConnection"/> subscribes to this and re-raises it as
-    /// <see cref="BlazorSqliteConnection.TablesChanged"/>, which is what makes a live query re-run
-    /// for a write it did not issue. The connection raises its own writes itself, so a transport
-    /// must not report those here or every live query re-runs twice per write.
+    /// <see cref="BlazorSqliteConnection.TablesChanged"/>, which is what makes a live query re-run.
+    /// A transport that reports its own writes must do so only once they are committed - a live
+    /// query in another tab that re-ran on an uncommitted write would read the old data and then
+    /// never hear about the commit.
     /// </para>
     /// <para>
-    /// Implemented as a no-op by default: a transport with no way to hear about other writers -
-    /// the in-process one, and any test double - is still a complete transport.
+    /// Implemented as a no-op by default: a transport with no way to hear about other writers - a
+    /// test double, say - is still a complete transport, and the connection covers its local
+    /// writes from the SQL it sends.
     /// </para>
     /// </remarks>
     event EventHandler<SqliteTablesChangedEventArgs>? TablesChanged
@@ -45,6 +47,19 @@ public interface ISqliteTransport : IAsyncDisposable
         add { }
         remove { }
     }
+
+    /// <summary>
+    /// Whether this transport raises <see cref="TablesChanged"/> for the writes it performs itself,
+    /// so the connection must not.
+    /// </summary>
+    /// <remarks>
+    /// A transport that sits next to the engine can be exact about what changed - SQLite's update
+    /// hook names every table a row landed in, including through triggers and cascades - and about
+    /// when, since it sees the commit. One that cannot leaves this <see langword="false"/>, and
+    /// <see cref="BlazorSqliteConnection"/> derives the tables from the SQL it sends instead.
+    /// Reporting on both sides would re-run every live query twice per write.
+    /// </remarks>
+    bool ReportsLocalWrites => false;
 }
 
 /// <summary>A single statement plus its parameters.</summary>

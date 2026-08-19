@@ -15,8 +15,10 @@ namespace BlazorSqlite.Data;
 public sealed class BlazorSqliteConnection : DbConnection
 {
     private readonly ISqliteTransport _transport;
+    private readonly HashSet<string> _pendingTables = new(StringComparer.OrdinalIgnoreCase);
+    private readonly string _database;
+    private readonly string _connectionString;
     private ConnectionState _state = ConnectionState.Closed;
-    private string _database;
     private bool _disposed;
 
     public BlazorSqliteConnection(ISqliteTransport transport, string databaseName)
@@ -26,7 +28,7 @@ public sealed class BlazorSqliteConnection : DbConnection
 
         _transport = transport;
         _database = databaseName;
-        ConnectionString = $"Data Source={databaseName}";
+        _connectionString = $"Data Source={databaseName}";
 
         // A write in another tab reaches this connection only through the transport, and the
         // subscription has to exist before the first query so a live query created immediately
@@ -51,20 +53,85 @@ public sealed class BlazorSqliteConnection : DbConnection
     public event EventHandler<SqliteTablesChangedEventArgs>? TablesChanged;
 
     /// <summary>
-    /// Raises <see cref="TablesChanged"/> for <paramref name="tables"/>. The command layer calls
-    /// this after a local write; writes from other tabs arrive through the transport instead.
+    /// Raises <see cref="TablesChanged"/> for <paramref name="tables"/>, for an application that
+    /// changed data in a way nothing else can see - a write on another connection, say.
     /// </summary>
+    /// <remarks>
+    /// The command layer does not need this: it reports its own writes through
+    /// <see cref="OnCommandWrote"/>, and writes from other tabs arrive through the transport.
+    /// </remarks>
     public void NotifyTablesChanged(IEnumerable<string> tables)
         => TablesChanged?.Invoke(this, new SqliteTablesChangedEventArgs([.. tables]));
 
+    /// <summary>
+    /// Called by the command layer after a statement that writes has run.
+    /// </summary>
+    /// <remarks>
+    /// Nothing happens when the transport reports its own writes - it knows better than the SQL
+    /// text does, and it knows when the write is committed. Otherwise the tables are raised at once,
+    /// unless a <see cref="BlazorSqliteTransaction"/> is open, in which case they wait for its
+    /// outcome: a live query that re-ran mid-transaction would show data that may yet roll back,
+    /// and would compete with the writer for a <c>DbContext</c> that allows one operation at a
+    /// time. Transactions driven by raw <c>BEGIN</c>/<c>COMMIT</c> text are not seen here, and a
+    /// write inside one is reported as it happens.
+    /// </remarks>
+    internal void OnCommandWrote(IEnumerable<string> tables)
+    {
+        if (_transport.ReportsLocalWrites)
+        {
+            return;
+        }
+
+        if (CurrentTransaction is null)
+        {
+            NotifyTablesChanged(tables);
+            return;
+        }
+
+        _pendingTables.UnionWith(tables);
+    }
+
+    /// <summary>Raises what the transaction that just committed had written.</summary>
+    internal void CommitPendingWrites()
+    {
+        if (_pendingTables.Count == 0)
+        {
+            return;
+        }
+
+        var tables = new HashSet<string>(_pendingTables, StringComparer.OrdinalIgnoreCase);
+        _pendingTables.Clear();
+        TablesChanged?.Invoke(this, new SqliteTablesChangedEventArgs(tables));
+    }
+
+    /// <summary>Forgets what a rolled-back transaction had written: nothing anyone can see changed.</summary>
+    internal void DiscardPendingWrites() => _pendingTables.Clear();
+
+    /// <summary>
+    /// <c>Data Source=&lt;database&gt;</c>, for display. The database is fixed by the transport
+    /// this connection was built on, so the string cannot be changed to point elsewhere.
+    /// </summary>
     [AllowNull]
-    public override string ConnectionString { get; set; }
+    public override string ConnectionString
+    {
+        get => _connectionString;
+        set
+        {
+            if (!string.Equals(value, _connectionString, StringComparison.Ordinal))
+            {
+                throw new NotSupportedException(
+                    "A BlazorSqliteConnection is bound to the database its transport opened; the "
+                    + "connection string cannot be changed. Open another session for another database.");
+            }
+        }
+    }
 
     public override string Database => _database;
 
     public override string DataSource => _database;
 
-    public override string ServerVersion => "3";
+    /// <summary>The SQLite version of the vendored engine; see <c>engine/wa-sqlite.lock.props</c>.</summary>
+    public override string ServerVersion => EntityFrameworkCore.BrowserSqlitePclProvider.EngineVersion;
 
     public override ConnectionState State => _state;
 
@@ -116,11 +183,14 @@ public sealed class BlazorSqliteConnection : DbConnection
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Not supported: the transport owns exactly one database, so there is nothing to change to.
+    /// Renaming here would only make <see cref="Database"/> disagree with the worker.
+    /// </summary>
     public override void ChangeDatabase(string databaseName)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
-        _database = databaseName;
-    }
+        => throw new NotSupportedException(
+            "A BlazorSqliteConnection is bound to the database its transport opened. Open another "
+            + "session for another database.");
 
     protected override DbCommand CreateDbCommand() => new BlazorSqliteCommand(this);
 

@@ -14,11 +14,18 @@ const here = fileURLToPath(new URL('.', import.meta.url));
 const port = Number(process.env.PORT ?? 5199);
 
 // Mirrors the RCL layout: the package's wwwroot is served under _content/<package>.
+const packages = ['BlazorSqlite', 'BlazorSqlite.Storage.Opfs', 'BlazorSqlite.Storage.IndexedDb', 'BlazorSqlite.Storage.CacheStorage'];
+
+// The same layout is repeated under /nested/, which is how a Blazor application published under a
+// sub-path (`<base href="/nested/">`) serves its assets. public/nested/index.html loads the library
+// from there, so the tests can prove that no module is reached by a root-relative URL.
+const basePaths = ['', '/nested'];
+
 const roots = [
-  { prefix: '/_content/BlazorSqlite/', directory: join(here, '..', '..', 'src', 'BlazorSqlite', 'wwwroot') },
-  { prefix: '/_content/BlazorSqlite.Storage.Opfs/', directory: join(here, '..', '..', 'src', 'BlazorSqlite.Storage.Opfs', 'wwwroot') },
-  { prefix: '/_content/BlazorSqlite.Storage.IndexedDb/', directory: join(here, '..', '..', 'src', 'BlazorSqlite.Storage.IndexedDb', 'wwwroot') },
-  { prefix: '/_content/BlazorSqlite.Storage.CacheStorage/', directory: join(here, '..', '..', 'src', 'BlazorSqlite.Storage.CacheStorage', 'wwwroot') },
+  ...basePaths.flatMap(basePath => packages.map(name => ({
+    prefix: `${basePath}/_content/${name}/`,
+    directory: join(here, '..', '..', 'src', name, 'wwwroot'),
+  }))),
   { prefix: '/', directory: join(here, 'public') },
 ];
 

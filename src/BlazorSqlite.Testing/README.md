@@ -14,19 +14,23 @@ tested on desktop .NET.
 
 ```csharp
 await using var transport = new InProcessSqliteTransport();
-await using var connection = new BlazorSqliteConnection(transport);
+await using var connection = new BlazorSqliteConnection(transport, "test.db");
+await connection.OpenAsync();
 options.UseBlazorSqlite(connection);
 
 // after the act
 Assert.Contains("CREATE TABLE", transport.ExecutedCommands[0]);
 ```
 
-It mirrors the worker's responsibilities rather than approximating them — including installing the
-EF function set, which matters more than it sounds. EF's SQLite provider registers its scalar
-functions, aggregates, and collation only when the connection is literally a `SqliteConnection`;
-against any other `DbConnection` it logs a warning and moves on. BlazorSqlite supplies its own
-connection, so it inherits that obligation, and `SqliteFunctions` is the reference implementation the
-worker-side UDF host matches. Pass `registerEfFunctions: false` to see what breaks without it.
+It mirrors the worker's responsibilities rather than approximating them. It installs the EF function
+set, which matters more than it sounds: EF's SQLite provider registers its scalar functions,
+aggregates, and collation only when the connection is literally a `SqliteConnection`; against any
+other `DbConnection` it logs a warning and moves on. BlazorSqlite supplies its own connection, so it
+inherits that obligation, and `SqliteFunctions` is the reference implementation the worker-side UDF
+host matches. Pass `registerEfFunctions: false` to see what breaks without it. And it reports writes
+the way the worker does - from SQLite's update hook, cascades and triggers included, once the
+transaction that made them commits - so live queries behave on desktop exactly as they do in the
+browser.
 
 ## 2. The storage conformance kit
 

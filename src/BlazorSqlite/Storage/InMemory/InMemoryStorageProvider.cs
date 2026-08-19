@@ -50,10 +50,14 @@ public sealed class InMemoryStorageProvider : IBlazorSqliteStorageProvider
     {
         RequiredBuild = BlazorSqliteEngineBuild.Synchronous,
         IsPersistent = false,
-        SupportsMultipleConnections = true,
-        SupportsConcurrentReads = true,
         SupportsMultiDatabaseTransactions = true,
         CanChangePageSize = true,
+
+        // Every connection is its own worker with its own heap, so a second connection to the
+        // "same" in-memory database is a different, empty database. Claiming otherwise would let a
+        // second session silently read nothing where the first wrote everything.
+        SupportsMultipleConnections = false,
+        SupportsConcurrentReads = false,
 
         // Durability is meaningless without persistence: there is nothing to flush to.
         SupportsRelaxedDurability = false,

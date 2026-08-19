@@ -43,16 +43,17 @@ test('another tab\'s write reaches .NET', () => {
   assert.deepEqual(target.calls, [{ method: 'OnTablesChanged', args: [['product']] }]);
 });
 
-// The .NET command layer raises its own writes the moment they complete. Relaying them again would
-// re-run every live query twice per write.
-test('this tab\'s own write is not relayed', () => {
+// The worker is the source of truth for this tab's own writes too: it knows the exact tables from
+// SQLite's update hook and reports them only once committed. The .NET transport declares
+// ReportsLocalWrites so the command layer does not raise the same write again from the SQL text.
+test("this tab's own write is relayed as well", () => {
   const host = fakeHost();
   const target = fakeTarget();
   listen(host, target, 'app.db');
 
   host.emit(write('app.db', ['product']), { local: true });
 
-  assert.deepEqual(target.calls, []);
+  assert.deepEqual(target.calls, [{ method: 'OnTablesChanged', args: [['product']] }]);
 });
 
 // The broadcast channel is origin-wide, so it carries every database's traffic.

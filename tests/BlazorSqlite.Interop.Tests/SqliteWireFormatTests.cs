@@ -85,6 +85,28 @@ public sealed class SqliteWireFormatTests
         Assert.Equal(42L, Assert.Single(Assert.Single(Assert.Single(results).Rows)));
     }
 
+    /// <summary>
+    /// JSON has no spelling for the two IEEE values SQLite can hold. Left alone, an infinite
+    /// parameter would fail inside the serializer with a message about JSON, and an infinite cell
+    /// would arrive as null and fail inside the decoder. NaN is stored by SQLite as NULL, so that is
+    /// what it becomes on the way in.
+    /// </summary>
+    [Fact]
+    public void InfinityAndNaN_SurviveTheWire()
+    {
+        Assert.Equal((SqliteWireFormat.TypeCode.Real, "Infinity"), SqliteWireFormat.EncodeValue(double.PositiveInfinity, "p"));
+        Assert.Equal((SqliteWireFormat.TypeCode.Real, "-Infinity"), SqliteWireFormat.EncodeValue(double.NegativeInfinity, "p"));
+        Assert.Equal((SqliteWireFormat.TypeCode.Real, "Infinity"), SqliteWireFormat.EncodeValue(float.PositiveInfinity, "p"));
+        Assert.Equal((SqliteWireFormat.TypeCode.Null, (object?)null), SqliteWireFormat.EncodeValue(double.NaN, "p"));
+
+        var results = SqliteWireFormat.DecodeResults(Parse(
+            """[{ "columnNames": ["v"], "columnTypes": ["REAL"], "rows": [{ "t": [2, 2, 2], "v": ["Infinity", "-Infinity", 1.5] }] }]"""));
+
+        Assert.Equal(
+            [double.PositiveInfinity, double.NegativeInfinity, 1.5d],
+            Assert.Single(Assert.Single(results).Rows));
+    }
+
     [Fact]
     public void Blob_RoundTripsThroughBase64()
     {

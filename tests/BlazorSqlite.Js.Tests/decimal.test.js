@@ -51,6 +51,26 @@ test('multiply matches the S4 oracle', () => {
     ['0', '30', '27', '-15', '7.5', '0.3', '300', '-0.75', '3703.7034', '9']);
 });
 
+// When a product has more than 28 decimals, every surplus digit is dropped at once and the whole
+// remainder decides the rounding, as System.Decimal does. Rounding digit by digit gets `…51` wrong:
+// 1 is below half, then 5 ties to even, and 0.51 rounds down instead of up. Oracle: .NET 10.
+test('multiply drops surplus digits with one rounding, not one per digit', () => {
+  const tiny = parse('0.0000000000000000000000000001');
+  const cases = [
+    ['0.51', '0.0000000000000000000000000001'],
+    ['0.49', '0.0000000000000000000000000000'],
+    ['1.50', '0.0000000000000000000000000002'],
+    ['2.50', '0.0000000000000000000000000002'],
+  ];
+  assert.deepEqual(
+    cases.map(([factor]) => tiny.multiply(parse(factor)).toString()),
+    cases.map(([, expected]) => expected));
+
+  const three = parse('0.0000000000000000000000000003');
+  assert.equal(three.multiply(parse('1.51')).toString(), '0.0000000000000000000000000005');
+  assert.equal(three.multiply(parse('1.50')).toString(), '0.0000000000000000000000000004');
+});
+
 test('divide matches the S4 oracle', () => {
   assert.deepEqual(
     map(values, v => v.divide(parse('4'))),

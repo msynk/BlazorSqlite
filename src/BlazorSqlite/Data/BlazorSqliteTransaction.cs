@@ -21,8 +21,11 @@ public sealed class BlazorSqliteTransaction : DbTransaction
 
     protected override DbConnection DbConnection => _connection;
 
-    internal Task BeginAsync(CancellationToken cancellationToken)
-        => _connection.ExecuteInternalAsync("BEGIN", cancellationToken);
+    internal async Task BeginAsync(CancellationToken cancellationToken)
+    {
+        await _connection.ExecuteInternalAsync("BEGIN", cancellationToken).ConfigureAwait(false);
+        _connection.DiscardPendingWrites();
+    }
 
     public override void Commit()
         => throw BlazorSqliteSynchronousApiNotSupportedException.ForMember(nameof(Commit), nameof(CommitAsync));
@@ -62,6 +65,7 @@ public sealed class BlazorSqliteTransaction : DbTransaction
             {
                 _completed = true;
                 _connection.CurrentTransaction = null;
+                _connection.DiscardPendingWrites();
             }
         }
 
@@ -75,5 +79,15 @@ public sealed class BlazorSqliteTransaction : DbTransaction
         await _connection.ExecuteInternalAsync(statement, cancellationToken).ConfigureAwait(false);
         _completed = true;
         _connection.CurrentTransaction = null;
+
+        // Live queries hear about the transaction's writes only now, and only if it committed.
+        if (statement == "COMMIT")
+        {
+            _connection.CommitPendingWrites();
+        }
+        else
+        {
+            _connection.DiscardPendingWrites();
+        }
     }
 }
