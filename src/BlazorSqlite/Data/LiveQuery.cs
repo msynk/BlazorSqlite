@@ -9,6 +9,7 @@ public sealed class LiveQuery<T> : ILiveQuery<T>
     private readonly Func<CancellationToken, Task<T>> _execute;
     private readonly HashSet<string> _tables;
     private readonly List<TaskCompletionSource<T>> _waiters = [];
+    private readonly Action? _onDispose;
     private readonly Lock _refreshGate = new();
     private bool _refreshing;
     private bool _refreshRequested;
@@ -21,6 +22,21 @@ public sealed class LiveQuery<T> : ILiveQuery<T>
         BlazorSqliteConnection connection,
         Func<CancellationToken, Task<T>> execute,
         IEnumerable<string> tables)
+        : this(connection, execute, tables, onDispose: null)
+    {
+    }
+
+    /// <summary>
+    /// As the public constructor, plus <paramref name="onDispose"/>: runs once when the live query
+    /// is disposed, after it has stopped listening to the connection. Lets a caller that wired the
+    /// query to something else - the EF entry point subscribes to the context's SaveChanges events -
+    /// release that too.
+    /// </summary>
+    internal LiveQuery(
+        BlazorSqliteConnection connection,
+        Func<CancellationToken, Task<T>> execute,
+        IEnumerable<string> tables,
+        Action? onDispose)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(execute);
@@ -28,6 +44,7 @@ public sealed class LiveQuery<T> : ILiveQuery<T>
         _connection = connection;
         _execute = execute;
         _tables = new HashSet<string>(tables, StringComparer.OrdinalIgnoreCase);
+        _onDispose = onDispose;
         _connection.TablesChanged += OnTablesChanged;
     }
 
@@ -95,6 +112,7 @@ public sealed class LiveQuery<T> : ILiveQuery<T>
             _waiters.Clear();
         }
 
+        _onDispose?.Invoke();
         return ValueTask.CompletedTask;
     }
 

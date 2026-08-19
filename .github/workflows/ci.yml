@@ -84,6 +84,20 @@ jobs:
           cache: npm
           cache-dependency-path: tests/BlazorSqlite.Browser.Tests/package-lock.json
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # The test server serves the library assets straight out of src/*/wwwroot, but the wa-sqlite
+      # engine and the upstream VFS files are not in the repository: they are downloaded and
+      # checksum-pinned during `dotnet restore` (see src/BlazorSqlite/engine/FetchEngine.targets and
+      # src/BlazorSqlite.Storage.*/vfs/*.targets, which also run node to rewrite the VFS imports -
+      # hence setup-node first). Without this step every page under test 404s on
+      # _content/BlazorSqlite/engine/*. No build is needed beyond that.
+      - name: Fetch engine assets
+        run: dotnet restore BlazorSqlite.slnx
+        working-directory: ${{ github.workspace }}
+
       - name: Install dependencies
         run: npm ci
 
@@ -93,8 +107,6 @@ jobs:
       - name: Install Firefox and WebKit
         run: npx playwright install --with-deps firefox webkit
 
-      # The test server serves the library assets straight out of src/*/wwwroot, so no .NET build is
-      # needed for this job.
       - name: Run
         run: npx playwright test
         env:

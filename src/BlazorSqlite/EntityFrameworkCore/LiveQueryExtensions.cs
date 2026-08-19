@@ -30,10 +30,27 @@ public static class LiveQueryExtensions
         ArgumentNullException.ThrowIfNull(connection);
 
         var tables = SqliteTableNames.Extract(query.ToQueryString());
+
+        // The write notification arrives while SaveChanges is still consuming its result. Refreshing
+        // then, on a host where the refresh runs on another thread, races the change tracker; the
+        // gate defers the re-read until the save has finished. Null only for a query whose provider
+        // hides its context, in which case the refresh runs ungated as before.
+        var context = DbContextOf(query);
+        var gate = context is null ? null : new SaveChangesGate(context);
+
         return new LiveQuery<IReadOnlyList<T>>(
             connection,
-            async ct => await query.ToListAsync(ct).ConfigureAwait(false),
-            tables);
+            async ct =>
+            {
+                if (gate is not null)
+                {
+                    await gate.WaitForIdleAsync(ct).ConfigureAwait(false);
+                }
+
+                return await query.ToListAsync(ct).ConfigureAwait(false);
+            },
+            tables,
+            onDispose: gate is null ? null : gate.Dispose);
     }
 
     /// <summary>
