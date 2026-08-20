@@ -53,6 +53,29 @@ internal static class Snippets
             });
             """;
 
+        /// <summary>The condensed version on the landing page: register, open, query.</summary>
+        public const string Hero =
+            """
+            // Program.cs - one session factory, one preference order.
+            builder.Services.AddSingleton(sp => new BlazorSqliteSessionFactory(
+                resolver, transport, selection, bindings));
+
+            // Anywhere you would have opened a DbContext.
+            var session = await factory.OpenAsync("app.db");
+
+            var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+                .UseBlazorSqlite(session.Connection)
+                .Options);
+
+            await context.Database.MigrateAsync();
+
+            // From here it is ordinary EF Core - running inside the browser tab.
+            var open = await context.Orders
+                .Include(o => o.Customer)
+                .Where(o => o.Status == OrderStatus.Draft)
+                .ToListAsync();
+            """;
+
         public const string OpenContext =
             """
             // One session per tab: it owns the worker, the transport, and the ADO.NET connection.

@@ -28,38 +28,39 @@ window.blazorSqliteSample = {
     }
   },
 
+  /**
+   * The boot script in index.html owns the resolution rules so that the first paint is already
+   * correct; this object only reads and writes the preference, then asks it to re-apply.
+   */
   theme: {
-    key: "blazorsqlite.theme",
-
-    /** "light" | "dark" | "system" */
+    /** "light" | "dark" | "system" - what the reader chose, not what is painted. */
     get() {
-      try {
-        const stored = localStorage.getItem(this.key);
-        return stored === "light" || stored === "dark" ? stored : "system";
-      } catch {
-        return "system";
-      }
+      return window.__blazorSqliteTheme.preference();
     },
 
+    /** Stores the preference and returns what is actually painted now: "light" or "dark". */
     set(mode) {
-      const root = document.documentElement;
-      if (mode === "light" || mode === "dark") {
-        root.setAttribute("data-theme", mode);
-        try { localStorage.setItem(this.key, mode); } catch { /* ignore */ }
-      } else {
-        root.removeAttribute("data-theme");
-        try { localStorage.removeItem(this.key); } catch { /* ignore */ }
+      const key = window.__blazorSqliteTheme.key;
+      try {
+        if (mode === "light" || mode === "dark") {
+          localStorage.setItem(key, mode);
+        } else {
+          localStorage.removeItem(key);
+        }
+      } catch {
+        // Storage blocked: the choice still applies to this page, it just will not survive a reload.
       }
-      return this.resolved();
+      return window.__blazorSqliteTheme.apply();
     },
 
-    /** What the page is actually painting right now: "light" or "dark". */
+    /** What the page is painting right now: "light" or "dark". */
     resolved() {
-      const explicit = document.documentElement.getAttribute("data-theme");
-      if (explicit === "light" || explicit === "dark") {
-        return explicit;
-      }
-      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
     },
+  },
+
+  /** Keeps the page behind the mobile navigation drawer from scrolling with it. */
+  lockScroll(locked) {
+    document.body.style.overflow = locked ? "hidden" : "";
   },
 };

@@ -1,49 +1,95 @@
 @inherits LayoutComponentBase
-@using BlazorSqlite.Samples.Client.Components
-@using Microsoft.AspNetCore.Components.Routing
-@using Microsoft.AspNetCore.Components.Web
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+@implements IDisposable
 
-<div class="shell">
-    <header class="top">
-        <a class="brand" href="">
-            <span class="brand-mark">SQL</span>
-            <span>
-                <span class="eyebrow">BlazorSqlite</span>
-                <span class="brand-title">EF Core + SQLite, in this tab</span>
-            </span>
-        </a>
-        <div class="top-right">
-            <nav>
-                <NavLink href="" Match="NavLinkMatch.All">Overview</NavLink>
-                <span class="nav-sep"></span>
-                <NavLink href="catalog">Catalog</NavLink>
-                <NavLink href="customers">Customers</NavLink>
-                <NavLink href="orders">Orders</NavLink>
-                <span class="nav-sep"></span>
-                <NavLink href="queries">SQL</NavLink>
-                <NavLink href="storage">Storage</NavLink>
-                <NavLink href="admin">Admin</NavLink>
-                <NavLink href="limits">Limits</NavLink>
-            </nav>
-            <ThemeToggle />
-        </div>
-    </header>
-    <StorageSwitcher />
-    <main>
+@* Two shells, one layout. The overview is a landing page and runs full-bleed with no sidebar;
+   every other route is documentation and gets the docs shell: sidebar, session bar, content. *@
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<TopBar NavOpen="_navOpen" OnToggleNav="ToggleNavAsync" />
+
+@if (IsLanding)
+{
+    <main id="main">
         <ErrorBoundary @ref="_boundary">
-            <ChildContent>
-                @Body
-            </ChildContent>
+            <ChildContent>@Body</ChildContent>
             <ErrorContent Context="exception">
-                <UnhandledExceptionView Exception="exception" />
+                <div class="container"><UnhandledExceptionView Exception="exception" /></div>
             </ErrorContent>
         </ErrorBoundary>
     </main>
-</div>
+}
+else
+{
+    <div class="layout">
+        <button type="button" class="nav-scrim" data-open="@(_navOpen ? "true" : "false")"
+                tabindex="@(_navOpen ? 0 : -1)" aria-label="Close navigation" @onclick="CloseNavAsync"></button>
+
+        <AppNav Open="_navOpen" OnNavigate="CloseNavAsync" />
+
+        <main id="main" class="content">
+            <StorageSwitcher />
+            <ErrorBoundary @ref="_boundary">
+                <ChildContent>@Body</ChildContent>
+                <ErrorContent Context="exception">
+                    <UnhandledExceptionView Exception="exception" />
+                </ErrorContent>
+            </ErrorBoundary>
+        </main>
+    </div>
+}
+
+<footer class="site-footer">
+    <div class="footer-inner">
+        <p>
+            BlazorSqlite @SiteLinks.Version &middot; MIT &middot; EF Core 10 on .NET 10.
+            Everything on this site runs in your browser.
+        </p>
+        <nav class="footer-links" aria-label="Project links">
+            <a href="@SiteLinks.Repository" target="_blank" rel="noopener">GitHub</a>
+            <a href="@SiteLinks.NuGet" target="_blank" rel="noopener">NuGet</a>
+            <a href="@SiteLinks.Issues" target="_blank" rel="noopener">Issues</a>
+            <a href="@SiteLinks.License" target="_blank" rel="noopener">License</a>
+        </nav>
+    </div>
+</footer>
 
 @code {
     private ErrorBoundary? _boundary;
+    private bool _navOpen;
+
+    private bool IsLanding => Nav.ToBaseRelativePath(Nav.Uri).Trim('/').Length == 0;
+
+    protected override void OnInitialized()
+        => Nav.LocationChanged += OnLocationChanged;
 
     protected override void OnParametersSet()
         => _boundary?.Recover();
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => StateHasChanged();
+
+    private Task ToggleNavAsync() => SetNavAsync(!_navOpen);
+
+    private Task CloseNavAsync() => _navOpen ? SetNavAsync(false) : Task.CompletedTask;
+
+    private async Task SetNavAsync(bool open)
+    {
+        _navOpen = open;
+        try
+        {
+            // The drawer covers the viewport under 1024px; letting the page behind it scroll is
+            // the classic mobile-drawer bug.
+            await Js.InvokeVoidAsync("blazorSqliteSample.lockScroll", open);
+        }
+        catch (Exception ex)
+        {
+            SampleLog.Exception(ex);
+        }
+    }
+
+    public void Dispose()
+        => Nav.LocationChanged -= OnLocationChanged;
 }
