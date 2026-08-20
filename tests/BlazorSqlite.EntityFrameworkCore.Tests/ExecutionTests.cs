@@ -18,7 +18,7 @@ public sealed class ExecutionTests
     [Fact]
     public async Task SaveChanges_And_Query_RoundTrip()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var ctx = ContextFactory.Create(transport);
         await ctx.Database.EnsureCreatedAsync(Ct);
 
@@ -66,7 +66,7 @@ public sealed class ExecutionTests
     [Fact]
     public async Task DecimalComparison_RunsThroughEfCompare()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var ctx = ContextFactory.Create(transport);
         await ctx.Database.EnsureCreatedAsync(Ct);
 
@@ -86,7 +86,7 @@ public sealed class ExecutionTests
     [Fact]
     public async Task DecimalSum_RunsThroughEfSum()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var ctx = ContextFactory.Create(transport);
         await ctx.Database.EnsureCreatedAsync(Ct);
 
@@ -106,7 +106,7 @@ public sealed class ExecutionTests
     [Fact]
     public async Task WithoutEfFunctions_DecimalQueries_Fail()
     {
-        await using var transport = new InProcessSqliteTransport(registerEfFunctions: false);
+        await using var transport = new BlazorSqliteInProcessTransport(registerEfFunctions: false);
         await using var ctx = ContextFactory.Create(transport);
         await ctx.Database.EnsureCreatedAsync(Ct);
 
@@ -124,7 +124,7 @@ public sealed class ExecutionTests
     [Fact]
     public async Task SynchronousDispose_DoesNotThrow_AndLeavesTransportUsable()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         var ctx = ContextFactory.Create(transport);
         await ctx.Database.EnsureCreatedAsync(Ct);
         ctx.Categories.Add(new Category { Name = "Tools" });
@@ -140,7 +140,7 @@ public sealed class ExecutionTests
     [Fact]
     public async Task Connection_SurvivesOpenCloseCycles()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var ctx = ContextFactory.Create(transport);
         await ctx.Database.EnsureCreatedAsync(Ct);
 
@@ -159,12 +159,12 @@ public sealed class ExecutionTests
 
     /// <summary>
     /// Desktop tests bind through Microsoft.Data.Sqlite, which converts DateTime itself. The browser
-    /// transport encodes with <see cref="SqliteWireFormat"/> first, so this wrapper makes a leaking
+    /// transport encodes with <see cref="BlazorSqliteWireFormat"/> first, so this wrapper makes a leaking
     /// DateTime fail here the same way it fails in WASM.
     /// </summary>
-    private sealed class WireFormatAssertingTransport : ISqliteTransport
+    private sealed class WireFormatAssertingTransport : IBlazorSqliteTransport
     {
-        private readonly InProcessSqliteTransport _inner = new();
+        private readonly BlazorSqliteInProcessTransport _inner = new();
 
         public Task OpenAsync(string databaseName, CancellationToken cancellationToken = default)
             => _inner.OpenAsync(databaseName, cancellationToken);
@@ -172,11 +172,11 @@ public sealed class ExecutionTests
         public Task CloseAsync(CancellationToken cancellationToken = default)
             => _inner.CloseAsync(cancellationToken);
 
-        public Task<IReadOnlyList<SqliteCommandResult>> ExecuteAsync(
-            IReadOnlyList<SqliteCommandRequest> batch,
+        public Task<IReadOnlyList<BlazorSqliteCommandResult>> ExecuteAsync(
+            IReadOnlyList<BlazorSqliteCommandRequest> batch,
             CancellationToken cancellationToken = default)
         {
-            _ = SqliteWireFormat.EncodeBatch(batch);
+            _ = BlazorSqliteWireFormat.EncodeBatch(batch);
             return _inner.ExecuteAsync(batch, cancellationToken);
         }
 

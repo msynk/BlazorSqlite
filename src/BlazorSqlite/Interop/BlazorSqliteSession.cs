@@ -15,8 +15,8 @@ public sealed class BlazorSqliteSession : IAsyncDisposable
 {
     internal BlazorSqliteSession(
         BlazorSqliteConnection connection,
-        ISqliteTransport transport,
-        StorageResolution resolution)
+        IBlazorSqliteTransport transport,
+        BlazorSqliteStorageResolution resolution)
     {
         Connection = connection;
         Transport = transport;
@@ -27,10 +27,10 @@ public sealed class BlazorSqliteSession : IAsyncDisposable
     public BlazorSqliteConnection Connection { get; }
 
     /// <summary>The transport serving <see cref="Connection"/>. Owned by this session.</summary>
-    public ISqliteTransport Transport { get; }
+    public IBlazorSqliteTransport Transport { get; }
 
     /// <summary>Why this backend was chosen, including every candidate that was not.</summary>
-    public StorageResolution Resolution { get; }
+    public BlazorSqliteStorageResolution Resolution { get; }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()

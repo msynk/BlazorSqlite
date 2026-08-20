@@ -13,8 +13,8 @@ public sealed class StorageProviderResolverTests
         Action<BlazorSqliteStorageSelectionBuilder> configure)
         => BlazorSqliteStorageSelectionBuilder.Create(configure);
 
-    private static StorageProviderResolver Resolver(
-        IStorageBindingStore bindingStore,
+    private static BlazorSqliteStorageProviderResolver Resolver(
+        IBlazorSqliteStorageBindingStore bindingStore,
         params IBlazorSqliteStorageProvider[] providers)
         => new(providers, bindingStore);
 
@@ -22,7 +22,7 @@ public sealed class StorageProviderResolverTests
     public async Task SingleAvailableProvider_IsSelected()
     {
         var opfs = new FakeStorageProvider("opfs");
-        var resolver = Resolver(new InMemoryStorageBindingStore(), opfs);
+        var resolver = Resolver(new BlazorSqliteInMemoryStorageBindingStore(), opfs);
 
         var resolution = await resolver.ResolveAsync(Database, Select(s => s.Prefer("opfs")), Ct);
 
@@ -40,7 +40,7 @@ public sealed class StorageProviderResolverTests
     public async Task SingleUnavailableProvider_Throws_WithoutSubstituting()
     {
         var resolver = Resolver(
-            new InMemoryStorageBindingStore(),
+            new BlazorSqliteInMemoryStorageBindingStore(),
             new FakeStorageProvider("opfs", isAvailable: false),
             new FakeStorageProvider("indexeddb"));
 
@@ -49,7 +49,7 @@ public sealed class StorageProviderResolverTests
 
         Assert.Equal(Database, failure.DatabaseName);
         var attempt = Assert.Single(failure.Attempts);
-        Assert.Equal(StorageCandidateStatus.Unavailable, attempt.Status);
+        Assert.Equal(BlazorSqliteStorageCandidateStatus.Unavailable, attempt.Status);
         Assert.Contains("switched off", attempt.Probe!.UnavailableReason!, StringComparison.Ordinal);
     }
 
@@ -58,7 +58,7 @@ public sealed class StorageProviderResolverTests
     {
         var indexedDb = new FakeStorageProvider("indexeddb");
         var resolver = Resolver(
-            new InMemoryStorageBindingStore(),
+            new BlazorSqliteInMemoryStorageBindingStore(),
             new FakeStorageProvider("opfs", isAvailable: false),
             indexedDb);
 
@@ -71,15 +71,15 @@ public sealed class StorageProviderResolverTests
         Assert.False(resolution.IsFirstChoice);
         Assert.Collection(
             resolution.Attempts,
-            a => Assert.Equal(StorageCandidateStatus.Unavailable, a.Status),
-            a => Assert.Equal(StorageCandidateStatus.Selected, a.Status));
+            a => Assert.Equal(BlazorSqliteStorageCandidateStatus.Unavailable, a.Status),
+            a => Assert.Equal(BlazorSqliteStorageCandidateStatus.Selected, a.Status));
     }
 
     [Fact]
     public async Task UnregisteredCandidate_IsReported_AndSkipped()
     {
         var indexedDb = new FakeStorageProvider("indexeddb");
-        var resolver = Resolver(new InMemoryStorageBindingStore(), indexedDb);
+        var resolver = Resolver(new BlazorSqliteInMemoryStorageBindingStore(), indexedDb);
 
         var resolution = await resolver.ResolveAsync(
             Database,
@@ -87,14 +87,14 @@ public sealed class StorageProviderResolverTests
             Ct);
 
         Assert.Same(indexedDb, resolution.Provider);
-        Assert.Equal(StorageCandidateStatus.NotRegistered, resolution.Attempts[0].Status);
+        Assert.Equal(BlazorSqliteStorageCandidateStatus.NotRegistered, resolution.Attempts[0].Status);
     }
 
     [Fact]
     public async Task AllCandidatesFail_ReportsEveryReason()
     {
         var resolver = Resolver(
-            new InMemoryStorageBindingStore(),
+            new BlazorSqliteInMemoryStorageBindingStore(),
             new FakeStorageProvider("opfs", isAvailable: false),
             new FakeStorageProvider("indexeddb", isAvailable: false));
 
@@ -104,7 +104,7 @@ public sealed class StorageProviderResolverTests
                 .AsTask());
 
         Assert.Equal(2, failure.Attempts.Count);
-        Assert.All(failure.Attempts, a => Assert.Equal(StorageCandidateStatus.Unavailable, a.Status));
+        Assert.All(failure.Attempts, a => Assert.Equal(BlazorSqliteStorageCandidateStatus.Unavailable, a.Status));
         Assert.Contains("opfs", failure.Message, StringComparison.Ordinal);
         Assert.Contains("indexeddb", failure.Message, StringComparison.Ordinal);
     }
@@ -114,7 +114,7 @@ public sealed class StorageProviderResolverTests
     {
         var indexedDb = new FakeStorageProvider("indexeddb");
         var resolver = Resolver(
-            new InMemoryStorageBindingStore(),
+            new BlazorSqliteInMemoryStorageBindingStore(),
             new FakeStorageProvider("opfs", probeThrows: new InvalidOperationException("boom")),
             indexedDb);
 
@@ -132,7 +132,7 @@ public sealed class StorageProviderResolverTests
     {
         var failure = Assert.Throws<InvalidOperationException>(
             () => Resolver(
-                new InMemoryStorageBindingStore(),
+                new BlazorSqliteInMemoryStorageBindingStore(),
                 new FakeStorageProvider("opfs"),
                 new FakeStorageProvider("OPFS")));
 
@@ -143,7 +143,7 @@ public sealed class StorageProviderResolverTests
     public async Task ProbeResultIsCached_AcrossResolves()
     {
         var opfs = new FakeStorageProvider("opfs");
-        var resolver = Resolver(new InMemoryStorageBindingStore(), opfs);
+        var resolver = Resolver(new BlazorSqliteInMemoryStorageBindingStore(), opfs);
         var selection = Select(s => s.Prefer("opfs"));
 
         await resolver.ResolveAsync("one.db", selection, Ct);
@@ -160,7 +160,7 @@ public sealed class StorageProviderResolverTests
         public async Task IsRejected_WithoutOptIn()
         {
             var resolver = Resolver(
-                new InMemoryStorageBindingStore(),
+                new BlazorSqliteInMemoryStorageBindingStore(),
                 new FakeStorageProvider("opfs", isAvailable: false),
                 new FakeStorageProvider("in-memory", isPersistent: false));
 
@@ -170,7 +170,7 @@ public sealed class StorageProviderResolverTests
                     .AsTask());
 
             Assert.Equal(
-                StorageCandidateStatus.RejectedAsNonPersistent,
+                BlazorSqliteStorageCandidateStatus.RejectedAsNonPersistent,
                 failure.Attempts[1].Status);
             Assert.Contains(
                 "AllowNonPersistentFallback",
@@ -183,7 +183,7 @@ public sealed class StorageProviderResolverTests
         {
             var inMemory = new FakeStorageProvider("in-memory", isPersistent: false);
             var resolver = Resolver(
-                new InMemoryStorageBindingStore(),
+                new BlazorSqliteInMemoryStorageBindingStore(),
                 new FakeStorageProvider("opfs", isAvailable: false),
                 inMemory);
 
@@ -203,7 +203,7 @@ public sealed class StorageProviderResolverTests
         public async Task IsAllowed_AsAnExplicitFirstChoice()
         {
             var inMemory = new FakeStorageProvider("in-memory", isPersistent: false);
-            var resolver = Resolver(new InMemoryStorageBindingStore(), inMemory);
+            var resolver = Resolver(new BlazorSqliteInMemoryStorageBindingStore(), inMemory);
 
             var resolution = await resolver.ResolveAsync(
                 Database,
@@ -221,7 +221,7 @@ public sealed class StorageProviderResolverTests
         [Fact]
         public async Task ExistingData_OutranksPreference()
         {
-            var store = new InMemoryStorageBindingStore();
+            var store = new BlazorSqliteInMemoryStorageBindingStore();
             await store.SetProviderNameAsync(Database, "indexeddb", Ct);
 
             var opfs = new FakeStorageProvider("opfs");
@@ -246,7 +246,7 @@ public sealed class StorageProviderResolverTests
         [Fact]
         public async Task UnreachableExistingData_Throws_RatherThanOpeningAnEmptyDatabase()
         {
-            var store = new InMemoryStorageBindingStore();
+            var store = new BlazorSqliteInMemoryStorageBindingStore();
             await store.SetProviderNameAsync(Database, "indexeddb", Ct);
 
             var resolver = Resolver(
@@ -267,7 +267,7 @@ public sealed class StorageProviderResolverTests
         [Fact]
         public async Task ExistingDataOnUnregisteredProvider_ThrowsWithActionableMessage()
         {
-            var store = new InMemoryStorageBindingStore();
+            var store = new BlazorSqliteInMemoryStorageBindingStore();
             await store.SetProviderNameAsync(Database, "cache-storage", Ct);
 
             var resolver = Resolver(store, new FakeStorageProvider("opfs"));
@@ -276,14 +276,14 @@ public sealed class StorageProviderResolverTests
                 () => resolver.ResolveAsync(Database, Select(s => s.Prefer("opfs")), Ct).AsTask());
 
             var attempt = Assert.Single(failure.Attempts);
-            Assert.Equal(StorageCandidateStatus.NotRegistered, attempt.Status);
+            Assert.Equal(BlazorSqliteStorageCandidateStatus.NotRegistered, attempt.Status);
             Assert.Contains("Register it", attempt.Explanation!, StringComparison.Ordinal);
         }
 
         [Fact]
         public async Task NoBetterProviderIsReported_WhenBoundProviderIsTheFirstChoice()
         {
-            var store = new InMemoryStorageBindingStore();
+            var store = new BlazorSqliteInMemoryStorageBindingStore();
             await store.SetProviderNameAsync(Database, "opfs", Ct);
 
             var resolver = Resolver(
@@ -307,7 +307,7 @@ public sealed class StorageProviderResolverTests
         [Fact]
         public async Task NonPersistentProviderIsNeverReportedAsBetter()
         {
-            var store = new InMemoryStorageBindingStore();
+            var store = new BlazorSqliteInMemoryStorageBindingStore();
             await store.SetProviderNameAsync(Database, "indexeddb", Ct);
 
             var resolver = Resolver(
@@ -326,7 +326,7 @@ public sealed class StorageProviderResolverTests
         [Fact]
         public async Task CommitBinding_MakesTheChoiceStick()
         {
-            var store = new InMemoryStorageBindingStore();
+            var store = new BlazorSqliteInMemoryStorageBindingStore();
             var indexedDb = new FakeStorageProvider("indexeddb");
             var resolver = Resolver(store, new FakeStorageProvider("opfs", isAvailable: false), indexedDb);
             var selection = Select(s => s.Prefer("opfs").Fallback("indexeddb"));
@@ -348,7 +348,7 @@ public sealed class StorageProviderResolverTests
         [Fact]
         public async Task Resolve_DoesNotRecordAnything_UntilCommitted()
         {
-            var store = new InMemoryStorageBindingStore();
+            var store = new BlazorSqliteInMemoryStorageBindingStore();
             var resolver = Resolver(store, new FakeStorageProvider("opfs"));
 
             await resolver.ResolveAsync(Database, Select(s => s.Prefer("opfs")), Ct);

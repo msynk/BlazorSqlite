@@ -19,18 +19,18 @@ builder.Services.AddScoped(sp => new HttpClient
     BaseAddress = new Uri(builder.HostEnvironment.BaseAddress),
 });
 
-builder.Services.AddSingleton<IStorageBindingStore>(sp =>
-    new LocalStorageBindingStore(sp.GetRequiredService<IJSRuntime>()));
+builder.Services.AddSingleton<IBlazorSqliteStorageBindingStore>(sp =>
+    new BlazorSqliteLocalStorageBindingStore(sp.GetRequiredService<IJSRuntime>()));
 
 builder.Services.AddSingleton<IReadOnlyList<IBlazorSqliteStorageProvider>>(sp =>
 {
     var js = sp.GetRequiredService<IJSRuntime>();
     return new IBlazorSqliteStorageProvider[]
     {
-        new OpfsStorageProvider(js),
-        new IndexedDbStorageProvider(js),
-        new CacheStorageProvider(js),
-        new InMemoryStorageProvider(),
+        new BlazorSqliteOpfsStorageProvider(js),
+        new BlazorSqliteIndexedDbStorageProvider(js),
+        new BlazorSqliteCacheStorageProvider(js),
+        new BlazorSqliteInMemoryStorageProvider(),
     };
 });
 
@@ -38,15 +38,15 @@ builder.Services.AddSingleton(sp =>
 {
     var js = sp.GetRequiredService<IJSRuntime>();
     var providers = sp.GetRequiredService<IReadOnlyList<IBlazorSqliteStorageProvider>>();
-    var bindings = sp.GetRequiredService<IStorageBindingStore>();
+    var bindings = sp.GetRequiredService<IBlazorSqliteStorageBindingStore>();
     return new BlazorSqliteSessionFactory(
-        new StorageProviderResolver(providers, bindings),
-        new WorkerSqliteTransportFactory(js),
+        new BlazorSqliteStorageProviderResolver(providers, bindings),
+        new BlazorSqliteWorkerTransportFactory(js),
         BlazorSqliteStorageSelectionBuilder.Create(s => s
-            .Prefer(OpfsStorageProvider.ProviderName)
-            .Fallback(IndexedDbStorageProvider.ProviderName)
-            .Fallback(CacheStorageProvider.ProviderName)
-            .Fallback(InMemoryStorageProvider.ProviderName)
+            .Prefer(BlazorSqliteOpfsStorageProvider.ProviderName)
+            .Fallback(BlazorSqliteIndexedDbStorageProvider.ProviderName)
+            .Fallback(BlazorSqliteCacheStorageProvider.ProviderName)
+            .Fallback(BlazorSqliteInMemoryStorageProvider.ProviderName)
             .AllowNonPersistentFallback()),
         bindings);
 });

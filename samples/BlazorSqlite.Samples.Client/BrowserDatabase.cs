@@ -22,22 +22,22 @@ public enum StorageSwitchMode
 public sealed class BrowserDatabase(
     BlazorSqliteSessionFactory factory,
     IReadOnlyList<IBlazorSqliteStorageProvider> providers,
-    IStorageBindingStore bindings) : IAsyncDisposable
+    IBlazorSqliteStorageBindingStore bindings) : IAsyncDisposable
 {
     public const string DatabaseName = "app.db";
 
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly StorageMigrator _migrator = new();
+    private readonly BlazorSqliteStorageMigrator _migrator = new();
     private BlazorSqliteSession? _session;
     private bool _migrated;
 
     public IReadOnlyList<IBlazorSqliteStorageProvider> Providers { get; } = providers;
 
-    public IStorageBindingStore Bindings { get; } = bindings;
+    public IBlazorSqliteStorageBindingStore Bindings { get; } = bindings;
 
     public BlazorSqliteSession? Session => _session;
 
-    public StorageResolution? Resolution => _session?.Resolution;
+    public BlazorSqliteStorageResolution? Resolution => _session?.Resolution;
 
     public BlazorSqliteConnection? Connection => _session?.Connection;
 

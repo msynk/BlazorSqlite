@@ -5,7 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace BlazorSqlite.Data;
 
 /// <summary>
-/// ADO.NET connection whose work is carried out by an <see cref="ISqliteTransport"/>.
+/// ADO.NET connection whose work is carried out by an <see cref="IBlazorSqliteTransport"/>.
 /// </summary>
 /// <remarks>
 /// Synchronous ADO.NET members throw <see cref="BlazorSqliteSynchronousApiNotSupportedException"/>:
@@ -14,14 +14,14 @@ namespace BlazorSqlite.Data;
 /// </remarks>
 public sealed class BlazorSqliteConnection : DbConnection
 {
-    private readonly ISqliteTransport _transport;
+    private readonly IBlazorSqliteTransport _transport;
     private readonly HashSet<string> _pendingTables = new(StringComparer.OrdinalIgnoreCase);
     private readonly string _database;
     private readonly string _connectionString;
     private ConnectionState _state = ConnectionState.Closed;
     private bool _disposed;
 
-    public BlazorSqliteConnection(ISqliteTransport transport, string databaseName)
+    public BlazorSqliteConnection(IBlazorSqliteTransport transport, string databaseName)
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
@@ -36,7 +36,7 @@ public sealed class BlazorSqliteConnection : DbConnection
         _transport.TablesChanged += OnTransportTablesChanged;
     }
 
-    internal ISqliteTransport Transport => _transport;
+    internal IBlazorSqliteTransport Transport => _transport;
 
     internal BlazorSqliteTransaction? CurrentTransaction { get; set; }
 
@@ -44,13 +44,13 @@ public sealed class BlazorSqliteConnection : DbConnection
     /// What the selected backend can honour. Defaults to unrestricted so an in-process transport
     /// used without a provider still behaves like a full SQLite.
     /// </summary>
-    public SqliteRuntimeLimits RuntimeLimits { get; init; } = SqliteRuntimeLimits.Unrestricted;
+    public BlazorSqliteRuntimeLimits RuntimeLimits { get; init; } = BlazorSqliteRuntimeLimits.Unrestricted;
 
     /// <summary>
     /// Raised after a write so live queries can re-run. Table-level: every listed name was touched
     /// by the statement that just completed.
     /// </summary>
-    public event EventHandler<SqliteTablesChangedEventArgs>? TablesChanged;
+    public event EventHandler<BlazorSqliteTablesChangedEventArgs>? TablesChanged;
 
     /// <summary>
     /// Raises <see cref="TablesChanged"/> for <paramref name="tables"/>, for an application that
@@ -61,7 +61,7 @@ public sealed class BlazorSqliteConnection : DbConnection
     /// <see cref="OnCommandWrote"/>, and writes from other tabs arrive through the transport.
     /// </remarks>
     public void NotifyTablesChanged(IEnumerable<string> tables)
-        => TablesChanged?.Invoke(this, new SqliteTablesChangedEventArgs([.. tables]));
+        => TablesChanged?.Invoke(this, new BlazorSqliteTablesChangedEventArgs([.. tables]));
 
     /// <summary>
     /// Called by the command layer after a statement that writes has run.
@@ -101,7 +101,7 @@ public sealed class BlazorSqliteConnection : DbConnection
 
         var tables = new HashSet<string>(_pendingTables, StringComparer.OrdinalIgnoreCase);
         _pendingTables.Clear();
-        TablesChanged?.Invoke(this, new SqliteTablesChangedEventArgs(tables));
+        TablesChanged?.Invoke(this, new BlazorSqliteTablesChangedEventArgs(tables));
     }
 
     /// <summary>Forgets what a rolled-back transaction had written: nothing anyone can see changed.</summary>
@@ -131,7 +131,7 @@ public sealed class BlazorSqliteConnection : DbConnection
     public override string DataSource => _database;
 
     /// <summary>The SQLite version of the vendored engine; see <c>engine/wa-sqlite.lock.props</c>.</summary>
-    public override string ServerVersion => EntityFrameworkCore.BrowserSqlitePclProvider.EngineVersion;
+    public override string ServerVersion => EntityFrameworkCore.BlazorSqlitePclProvider.EngineVersion;
 
     public override ConnectionState State => _state;
 
@@ -211,8 +211,8 @@ public sealed class BlazorSqliteConnection : DbConnection
     /// <summary>Runs a statement that returns nothing, bypassing command plumbing.</summary>
     internal async Task ExecuteInternalAsync(string sql, CancellationToken cancellationToken)
     {
-        SqliteFeatureGuards.EnsureSupported(sql, RuntimeLimits);
-        var request = new SqliteCommandRequest { CommandText = sql };
+        BlazorSqliteFeatureGuards.EnsureSupported(sql, RuntimeLimits);
+        var request = new BlazorSqliteCommandRequest { CommandText = sql };
         await _transport.ExecuteAsync([request], cancellationToken).ConfigureAwait(false);
     }
 
@@ -231,6 +231,6 @@ public sealed class BlazorSqliteConnection : DbConnection
         base.Dispose(disposing);
     }
 
-    private void OnTransportTablesChanged(object? sender, SqliteTablesChangedEventArgs e)
+    private void OnTransportTablesChanged(object? sender, BlazorSqliteTablesChangedEventArgs e)
         => TablesChanged?.Invoke(this, e);
 }

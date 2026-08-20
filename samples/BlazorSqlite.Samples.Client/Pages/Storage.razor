@@ -43,7 +43,7 @@
 
     <DemoCard Step="Inspect"
               Title="Why this session landed where it did"
-              CodeTitle="StorageResolution"
+              CodeTitle="BlazorSqliteStorageResolution"
               Code="@Snippets.Storage.Resolution">
         <Description>
             A resolution is a record of the whole decision, not just its outcome: every candidate,
@@ -72,7 +72,7 @@
                 {
                     <p class="warn">
                         @better.Name is available and ranked higher, but the data lives here.
-                        <code>StorageMigrationMode.AutomaticOnOpen</code> would copy, check the
+                        <code>BlazorSqliteStorageMigrationMode.AutomaticOnOpen</code> would copy, check the
                         image, then flip the binding. This sample uses the default,
                         <code>KeepExisting</code>.
                     </p>
@@ -110,7 +110,7 @@
             <span>
                 The core enforces these flags; it never special-cases OPFS against IndexedDB in
                 SQL. A backend that cannot honour <code>ATTACH</code> or
-                <code>PRAGMA page_size</code> fails in <code>SqliteFeatureGuards</code> instead of
+                <code>PRAGMA page_size</code> fails in <code>BlazorSqliteFeatureGuards</code> instead of
                 corrupting the file - see <a href="limits">Limits</a>.
             </span>
         </Description>
@@ -234,7 +234,7 @@
 </div>
 
 @code {
-    private StorageResolution? _resolution;
+    private BlazorSqliteStorageResolution? _resolution;
     private BlazorSqliteStorageCapabilities? _caps;
     private string? _binding;
     private bool? _persisted;

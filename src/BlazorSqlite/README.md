@@ -28,27 +28,27 @@ reload:
 ## Register
 
 ```csharp
-builder.Services.AddSingleton<IStorageBindingStore>(sp =>
-    new LocalStorageBindingStore(sp.GetRequiredService<IJSRuntime>()));
+builder.Services.AddSingleton<IBlazorSqliteStorageBindingStore>(sp =>
+    new BlazorSqliteLocalStorageBindingStore(sp.GetRequiredService<IJSRuntime>()));
 
 builder.Services.AddSingleton(sp =>
 {
     var js = sp.GetRequiredService<IJSRuntime>();
     var providers = new IBlazorSqliteStorageProvider[]
     {
-        new OpfsStorageProvider(js),
-        new IndexedDbStorageProvider(js),
-        new InMemoryStorageProvider(),
+        new BlazorSqliteOpfsStorageProvider(js),
+        new BlazorSqliteIndexedDbStorageProvider(js),
+        new BlazorSqliteInMemoryStorageProvider(),
     };
-    var bindings = sp.GetRequiredService<IStorageBindingStore>();
+    var bindings = sp.GetRequiredService<IBlazorSqliteStorageBindingStore>();
 
     return new BlazorSqliteSessionFactory(
-        new StorageProviderResolver(providers, bindings),
-        new WorkerSqliteTransportFactory(js),
+        new BlazorSqliteStorageProviderResolver(providers, bindings),
+        new BlazorSqliteWorkerTransportFactory(js),
         BlazorSqliteStorageSelectionBuilder.Create(s => s
-            .Prefer(OpfsStorageProvider.ProviderName)
-            .Fallback(IndexedDbStorageProvider.ProviderName)
-            .Fallback(InMemoryStorageProvider.ProviderName)
+            .Prefer(BlazorSqliteOpfsStorageProvider.ProviderName)
+            .Fallback(BlazorSqliteIndexedDbStorageProvider.ProviderName)
+            .Fallback(BlazorSqliteInMemoryStorageProvider.ProviderName)
             .AllowNonPersistentFallback()),
         bindings);
 });
@@ -62,8 +62,9 @@ options.UseBlazorSqlite(session.Connection);
 ```
 
 Selection is sticky: existing data outranks preference, so a database already written on one backend
-is reopened there rather than silently starting empty somewhere else. `StorageMigrationMode.KeepExisting`
-is the default; `AutomaticOnOpen` copies the image, verifies the SQLite header, then flips the binding.
+is reopened there rather than silently starting empty somewhere else.
+`BlazorSqliteStorageMigrationMode.KeepExisting` is the default; `AutomaticOnOpen` copies the image,
+verifies the SQLite header, then flips the binding.
 
 ## Live queries
 

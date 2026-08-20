@@ -14,7 +14,7 @@ public sealed class BrowserSqlitePclProviderTests
     [Fact]
     public void TheReportedVersionAndVersionNumberAgree()
     {
-        var provider = new BrowserSqlitePclProvider();
+        var provider = new BlazorSqlitePclProvider();
         var version = new Version(provider.sqlite3_libversion().utf8_to_string());
 
         var expected = (version.Major * 1_000_000)
@@ -31,9 +31,9 @@ public sealed class BrowserSqlitePclProviderTests
     [Fact]
     public void TheReportedVersionIsTheVendoredEngines()
     {
-        Assert.Equal("3.53.0", BrowserSqlitePclProvider.EngineVersion);
+        Assert.Equal("3.53.0", BlazorSqlitePclProvider.EngineVersion);
         Assert.Equal(
-            BrowserSqlitePclProvider.EngineVersion,
-            new BrowserSqlitePclProvider().sqlite3_libversion().utf8_to_string());
+            BlazorSqlitePclProvider.EngineVersion,
+            new BlazorSqlitePclProvider().sqlite3_libversion().utf8_to_string());
     }
 }

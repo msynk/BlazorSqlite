@@ -95,7 +95,7 @@ public sealed class BlazorSqliteDataReaderTests
         string[] columnNames,
         string?[] columnTypes,
         object?[][] rows)
-        => new BlazorSqliteDataReader(new SqliteCommandResult
+        => new BlazorSqliteDataReader(new BlazorSqliteCommandResult
         {
             ColumnNames = columnNames,
             ColumnTypes = columnTypes,

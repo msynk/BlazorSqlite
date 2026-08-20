@@ -9,8 +9,8 @@ namespace BlazorSqlite.Storage.Tests;
 /// there is no JavaScript runtime - the probe reports unavailable, which is the honest answer.
 /// The engine-layer kit and admin operations run in the browser suite.
 /// </summary>
-public sealed class OpfsStorageConformanceTests : StorageProviderConformanceTests
+public sealed class OpfsStorageConformanceTests : BlazorSqliteStorageProviderConformanceTests
 {
     /// <inheritdoc />
-    protected override IBlazorSqliteStorageProvider CreateProvider() => new OpfsStorageProvider();
+    protected override IBlazorSqliteStorageProvider CreateProvider() => new BlazorSqliteOpfsStorageProvider();
 }

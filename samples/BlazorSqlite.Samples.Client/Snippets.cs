@@ -19,18 +19,18 @@ internal static class Snippets
         public const string Registration =
             """
             // Program.cs - Blazor WebAssembly
-            builder.Services.AddSingleton<IStorageBindingStore>(sp =>
-                new LocalStorageBindingStore(sp.GetRequiredService<IJSRuntime>()));
+            builder.Services.AddSingleton<IBlazorSqliteStorageBindingStore>(sp =>
+                new BlazorSqliteLocalStorageBindingStore(sp.GetRequiredService<IJSRuntime>()));
 
             builder.Services.AddSingleton<IReadOnlyList<IBlazorSqliteStorageProvider>>(sp =>
             {
                 var js = sp.GetRequiredService<IJSRuntime>();
                 return new IBlazorSqliteStorageProvider[]
                 {
-                    new OpfsStorageProvider(js),
-                    new IndexedDbStorageProvider(js),
-                    new CacheStorageProvider(js),
-                    new InMemoryStorageProvider(),
+                    new BlazorSqliteOpfsStorageProvider(js),
+                    new BlazorSqliteIndexedDbStorageProvider(js),
+                    new BlazorSqliteCacheStorageProvider(js),
+                    new BlazorSqliteInMemoryStorageProvider(),
                 };
             });
 
@@ -38,16 +38,16 @@ internal static class Snippets
             {
                 var js = sp.GetRequiredService<IJSRuntime>();
                 var providers = sp.GetRequiredService<IReadOnlyList<IBlazorSqliteStorageProvider>>();
-                var bindings = sp.GetRequiredService<IStorageBindingStore>();
+                var bindings = sp.GetRequiredService<IBlazorSqliteStorageBindingStore>();
 
                 return new BlazorSqliteSessionFactory(
-                    new StorageProviderResolver(providers, bindings),
-                    new WorkerSqliteTransportFactory(js),
+                    new BlazorSqliteStorageProviderResolver(providers, bindings),
+                    new BlazorSqliteWorkerTransportFactory(js),
                     BlazorSqliteStorageSelectionBuilder.Create(s => s
-                        .Prefer(OpfsStorageProvider.ProviderName)
-                        .Fallback(IndexedDbStorageProvider.ProviderName)
-                        .Fallback(CacheStorageProvider.ProviderName)
-                        .Fallback(InMemoryStorageProvider.ProviderName)
+                        .Prefer(BlazorSqliteOpfsStorageProvider.ProviderName)
+                        .Fallback(BlazorSqliteIndexedDbStorageProvider.ProviderName)
+                        .Fallback(BlazorSqliteCacheStorageProvider.ProviderName)
+                        .Fallback(BlazorSqliteInMemoryStorageProvider.ProviderName)
                         .AllowNonPersistentFallback()),
                     bindings);
             });
@@ -315,13 +315,13 @@ internal static class Snippets
         public const string Selection =
             """
             BlazorSqliteStorageSelectionBuilder.Create(s => s
-                .Prefer(OpfsStorageProvider.ProviderName)
-                .Fallback(IndexedDbStorageProvider.ProviderName)
-                .Fallback(CacheStorageProvider.ProviderName)
-                .Fallback(InMemoryStorageProvider.ProviderName)
+                .Prefer(BlazorSqliteOpfsStorageProvider.ProviderName)
+                .Fallback(BlazorSqliteIndexedDbStorageProvider.ProviderName)
+                .Fallback(BlazorSqliteCacheStorageProvider.ProviderName)
+                .Fallback(BlazorSqliteInMemoryStorageProvider.ProviderName)
                 .AllowNonPersistentFallback());   // without this, in-memory is not acceptable
 
-            // Default is StorageMigrationMode.KeepExisting: data outranks preference.
+            // Default is BlazorSqliteStorageMigrationMode.KeepExisting: data outranks preference.
             // AutomaticOnOpen copies to the preferred backend, checks the image, then rebinds.
             """;
 
@@ -378,7 +378,7 @@ internal static class Snippets
             // Copy the image to another backend: probe target -> quota headroom -> export ->
             // import -> SQLite header check -> flip the sticky binding -> delete the source.
             // A failure anywhere leaves both the source and the binding untouched.
-            await new StorageMigrator()
+            await new BlazorSqliteStorageMigrator()
                 .MigrateAsync("app.db", source, target, bindingStore, cancellationToken);
             """;
     }
@@ -555,7 +555,7 @@ internal static class Snippets
             limits.CanChangePageSize;   // false on block-oriented backends
 
             // Letting PRAGMA page_size through on a backend that pins it would report success and
-            // then corrupt the image, so SqliteFeatureGuards throws instead.
+            // then corrupt the image, so BlazorSqliteFeatureGuards throws instead.
             await Database.ExecuteNonQueryAsync("PRAGMA page_size=512");
             """;
     }

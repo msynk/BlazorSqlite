@@ -6,7 +6,7 @@ namespace BlazorSqlite.EntityFrameworkCore.Tests;
 
 internal static class ContextFactory
 {
-    public static ProductContext Create(ISqliteTransport transport, string databaseName = "ef.db")
+    public static ProductContext Create(IBlazorSqliteTransport transport, string databaseName = "ef.db")
         => new(new DbContextOptionsBuilder<ProductContext>()
             .UseBlazorSqlite(new BlazorSqliteConnection(transport, databaseName))
             .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning))

@@ -182,7 +182,7 @@
 
 @code {
     private AppDbContext? _context;
-    private ILiveQuery<IReadOnlyList<Product>>? _live;
+    private IBlazorSqliteLiveQuery<IReadOnlyList<Product>>? _live;
     private IReadOnlyList<Product> _liveRows = [];
     private int _products;
     private int _customers;

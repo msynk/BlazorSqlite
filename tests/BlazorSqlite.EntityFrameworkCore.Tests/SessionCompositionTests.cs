@@ -19,12 +19,12 @@ public sealed class SessionCompositionTests
     [Fact]
     public async Task SessionFactory_ThenUseBlazorSqlite_MigratesAndQueries()
     {
-        var provider = new InMemoryStorageProvider();
-        var store = new InMemoryStorageBindingStore();
+        var provider = new BlazorSqliteInMemoryStorageProvider();
+        var store = new BlazorSqliteInMemoryStorageBindingStore();
         var factory = new BlazorSqliteSessionFactory(
-            new StorageProviderResolver([provider], store),
+            new BlazorSqliteStorageProviderResolver([provider], store),
             new InProcessTransportFactory(),
-            BlazorSqliteStorageSelectionBuilder.Create(s => s.Prefer(InMemoryStorageProvider.ProviderName)),
+            BlazorSqliteStorageSelectionBuilder.Create(s => s.Prefer(BlazorSqliteInMemoryStorageProvider.ProviderName)),
             store);
 
         await using var session = await factory.OpenAsync("app.db", Ct);
@@ -42,12 +42,12 @@ public sealed class SessionCompositionTests
         var loaded = await ctx.Products.Include(p => p.Category).SingleAsync(Ct);
         Assert.Equal("Widget", loaded.Name);
         Assert.Equal("Tools", loaded.Category!.Name);
-        Assert.Equal(InMemoryStorageProvider.ProviderName, await store.GetProviderNameAsync("app.db", Ct));
+        Assert.Equal(BlazorSqliteInMemoryStorageProvider.ProviderName, await store.GetProviderNameAsync("app.db", Ct));
     }
 
-    private sealed class InProcessTransportFactory : ISqliteTransportFactory
+    private sealed class InProcessTransportFactory : IBlazorSqliteTransportFactory
     {
-        public ISqliteTransport Create(IBlazorSqliteStorageProvider provider)
-            => new InProcessSqliteTransport();
+        public IBlazorSqliteTransport Create(IBlazorSqliteStorageProvider provider)
+            => new BlazorSqliteInProcessTransport();
     }
 }

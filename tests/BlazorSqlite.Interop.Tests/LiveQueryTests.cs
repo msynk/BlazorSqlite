@@ -11,7 +11,7 @@ public sealed class LiveQueryTests
     [Fact]
     public async Task ReRuns_WhenAWatchedTableIsWritten()
     {
-        var transport = new InProcessSqliteTransport();
+        var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "live.db");
         await connection.OpenAsync(Ct);
         await using var create = connection.CreateCommand();
@@ -19,7 +19,7 @@ public sealed class LiveQueryTests
         await create.ExecuteNonQueryAsync(Ct);
 
         var seen = new List<int>();
-        await using var live = new LiveQuery<int>(
+        await using var live = new BlazorSqliteLiveQuery<int>(
             connection,
             async ct =>
             {
@@ -53,7 +53,7 @@ public sealed class LiveQueryTests
         await connection.OpenAsync(Ct);
 
         var runs = 0;
-        await using var live = new LiveQuery<int>(
+        await using var live = new BlazorSqliteLiveQuery<int>(
             connection,
             _ => Task.FromResult(Interlocked.Increment(ref runs)),
             ["product"]);
@@ -72,7 +72,7 @@ public sealed class LiveQueryTests
         await using var connection = new BlazorSqliteConnection(transport, "live-remote.db");
         await connection.OpenAsync(Ct);
 
-        await using var live = new LiveQuery<int>(
+        await using var live = new BlazorSqliteLiveQuery<int>(
             connection,
             _ => Task.FromResult(1),
             ["product"]);
@@ -120,7 +120,7 @@ public sealed class LiveQueryTests
         await connection.OpenAsync(Ct);
 
         var runs = 0;
-        await using var live = new LiveQuery<int>(
+        await using var live = new BlazorSqliteLiveQuery<int>(
             connection,
             _ => Task.FromResult(Interlocked.Increment(ref runs)),
             ["product"]);
@@ -153,23 +153,23 @@ public sealed class LiveQueryTests
     }
 
     /// <summary>A transport that can be told to speak for another tab.</summary>
-    private sealed class RemoteWriteTransport : ISqliteTransport
+    private sealed class RemoteWriteTransport : IBlazorSqliteTransport
     {
-        public event EventHandler<SqliteTablesChangedEventArgs>? TablesChanged;
+        public event EventHandler<BlazorSqliteTablesChangedEventArgs>? TablesChanged;
 
         public void ReportRemoteWrite(params string[] tables)
-            => TablesChanged?.Invoke(this, new SqliteTablesChangedEventArgs(tables));
+            => TablesChanged?.Invoke(this, new BlazorSqliteTablesChangedEventArgs(tables));
 
         public Task OpenAsync(string databaseName, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
         public Task CloseAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public Task<IReadOnlyList<SqliteCommandResult>> ExecuteAsync(
-            IReadOnlyList<SqliteCommandRequest> batch,
+        public Task<IReadOnlyList<BlazorSqliteCommandResult>> ExecuteAsync(
+            IReadOnlyList<BlazorSqliteCommandRequest> batch,
             CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<SqliteCommandResult>>(
-                [.. batch.Select(_ => new SqliteCommandResult())]);
+            => Task.FromResult<IReadOnlyList<BlazorSqliteCommandResult>>(
+                [.. batch.Select(_ => new BlazorSqliteCommandResult())]);
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

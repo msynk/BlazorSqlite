@@ -38,7 +38,7 @@ public sealed class SqlEquivalenceTests
         string name,
         Func<ProductContext, IQueryable<object>> query)
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         using var stock = ContextFactory.CreateStock();
         using var ours = ContextFactory.Create(transport);
 

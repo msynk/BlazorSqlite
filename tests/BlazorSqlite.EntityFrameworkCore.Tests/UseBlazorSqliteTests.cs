@@ -18,7 +18,7 @@ public sealed class UseBlazorSqliteTests
     public void ProviderName_IsStockSqlite()
     {
         using var stock = ContextFactory.CreateStock();
-        using var ours = ContextFactory.Create(new InProcessSqliteTransport());
+        using var ours = ContextFactory.Create(new BlazorSqliteInProcessTransport());
 
         Assert.Equal("Microsoft.EntityFrameworkCore.Sqlite", stock.Database.ProviderName);
         Assert.Equal(stock.Database.ProviderName, ours.Database.ProviderName);
@@ -27,7 +27,7 @@ public sealed class UseBlazorSqliteTests
     [Fact]
     public void ReplacesTheTwoSyncBoundServices()
     {
-        using var ctx = ContextFactory.Create(new InProcessSqliteTransport());
+        using var ctx = ContextFactory.Create(new BlazorSqliteInProcessTransport());
 
         Assert.IsType<BlazorSqliteDatabaseCreator>(ctx.GetService<IRelationalDatabaseCreator>());
         Assert.IsType<BlazorSqliteHistoryRepository>(ctx.GetService<IHistoryRepository>());
@@ -39,7 +39,7 @@ public sealed class UseBlazorSqliteTests
         // The reason the veneer exists: UseSqlite(connection) alone reaches Open() through
         // RelationalDatabaseCreator.CreateAsync. If that ever becomes async in EF, this test
         // fails and the replacements can be re-evaluated.
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var ctx = new ProductContext(new DbContextOptionsBuilder<ProductContext>()
             .UseSqlite(new BlazorSqliteConnection(transport, "stock.db"))
             .Options);

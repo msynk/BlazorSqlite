@@ -19,7 +19,7 @@ public sealed class SyncSurfaceAudit(ITestOutputHelper output)
         SyncBound,
     }
 
-    private static async Task<ProductContext> CreateSeededAsync(InProcessSqliteTransport transport)
+    private static async Task<ProductContext> CreateSeededAsync(BlazorSqliteInProcessTransport transport)
     {
         var ctx = ContextFactory.Create(transport, "audit.db");
         await ctx.Database.EnsureCreatedAsync(Ct);
@@ -180,7 +180,7 @@ public sealed class SyncSurfaceAudit(ITestOutputHelper output)
         Expectation expected,
         Func<ProductContext, Task> operation)
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var ctx = await CreateSeededAsync(transport);
         await AssertExpectationAsync(name, expected, ctx, operation);
     }
@@ -192,7 +192,7 @@ public sealed class SyncSurfaceAudit(ITestOutputHelper output)
         Expectation expected,
         Func<ProductContext, Task> operation)
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var ctx = ContextFactory.Create(transport, "audit-schema.db");
         await AssertExpectationAsync(name, expected, ctx, operation);
     }

@@ -18,7 +18,7 @@ public sealed class InMemoryStorageProviderTests
     [Fact]
     public void DeclaresItselfVolatileAndSynchronous()
     {
-        var provider = new InMemoryStorageProvider();
+        var provider = new BlazorSqliteInMemoryStorageProvider();
 
         Assert.Equal("in-memory", provider.Name);
         Assert.False(provider.Capabilities.IsPersistent);
@@ -33,7 +33,7 @@ public sealed class InMemoryStorageProviderTests
     [Fact]
     public async Task ProbeIsAlwaysAvailable_AndExplainsItself()
     {
-        var probe = await new InMemoryStorageProvider().ProbeAsync(Ct);
+        var probe = await new BlazorSqliteInMemoryStorageProvider().ProbeAsync(Ct);
 
         Assert.True(probe.IsAvailable);
         Assert.Null(probe.UnavailableReason);
@@ -47,7 +47,7 @@ public sealed class InMemoryStorageProviderTests
     [Fact]
     public async Task ListReturnsEveryDatabase_InAStableOrder()
     {
-        var admin = new InMemoryStorageProvider().Admin;
+        var admin = new BlazorSqliteInMemoryStorageProvider().Admin;
         await admin.ImportAsync("zebra.db", Image, Ct);
         await admin.ImportAsync("apple.db", Image, Ct);
 
@@ -61,7 +61,7 @@ public sealed class InMemoryStorageProviderTests
     [Fact]
     public async Task ExportingAnAbsentDatabase_ThrowsFileNotFound()
     {
-        var admin = new InMemoryStorageProvider().Admin;
+        var admin = new BlazorSqliteInMemoryStorageProvider().Admin;
 
         await Assert.ThrowsAsync<FileNotFoundException>(
             () => admin.ExportAsync("never-existed.db", Ct).AsTask());
@@ -74,8 +74,8 @@ public sealed class InMemoryStorageProviderTests
     [Fact]
     public async Task ProviderInstancesDoNotShareStorage()
     {
-        var first = new InMemoryStorageProvider();
-        var second = new InMemoryStorageProvider();
+        var first = new BlazorSqliteInMemoryStorageProvider();
+        var second = new BlazorSqliteInMemoryStorageProvider();
 
         await first.Admin.ImportAsync("app.db", Image, Ct);
 

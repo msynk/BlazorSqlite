@@ -1,0 +1,40 @@
+using BlazorSqlite.Data;
+using BlazorSqlite.Storage;
+using Microsoft.JSInterop;
+
+namespace BlazorSqlite.Interop;
+
+/// <summary>
+/// Builds a <see cref="BlazorSqliteWorkerTransport"/> from whatever backend selection chose.
+/// </summary>
+public sealed class BlazorSqliteWorkerTransportFactory : IBlazorSqliteTransportFactory
+{
+    private readonly IJSRuntime _js;
+    private readonly string _hostModuleUrl;
+    private readonly string? _workerUrl;
+
+    public BlazorSqliteWorkerTransportFactory(IJSRuntime js, BlazorSqliteWorkerTransportOptions? defaults = null)
+    {
+        ArgumentNullException.ThrowIfNull(js);
+
+        _js = js;
+        _hostModuleUrl = defaults?.HostModuleUrl ?? BlazorSqliteWorkerTransport.VersionedHostModuleUrl;
+        _workerUrl = defaults?.WorkerUrl;
+    }
+
+    /// <inheritdoc />
+    public IBlazorSqliteTransport Create(IBlazorSqliteStorageProvider provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+
+        return new BlazorSqliteWorkerTransport(_js, new BlazorSqliteWorkerTransportOptions
+        {
+            HostModuleUrl = _hostModuleUrl,
+            WorkerUrl = _workerUrl,
+            RequiredBuild = provider.Capabilities.RequiredBuild,
+            Vfs = provider.VfsModule,
+            SupportsMultiDatabaseTransactions = provider.Capabilities.SupportsMultiDatabaseTransactions,
+            CanChangePageSize = provider.Capabilities.CanChangePageSize,
+        });
+    }
+}

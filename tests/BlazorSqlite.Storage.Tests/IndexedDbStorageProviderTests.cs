@@ -9,14 +9,14 @@ public sealed class IndexedDbStorageProviderTests
     [Fact]
     public void Name_IsTheStickyBindingKey()
     {
-        Assert.Equal("indexeddb", new IndexedDbStorageProvider().Name);
-        Assert.Equal(IndexedDbStorageProvider.ProviderName, new IndexedDbStorageProvider().Name);
+        Assert.Equal("indexeddb", new BlazorSqliteIndexedDbStorageProvider().Name);
+        Assert.Equal(BlazorSqliteIndexedDbStorageProvider.ProviderName, new BlazorSqliteIndexedDbStorageProvider().Name);
     }
 
     [Fact]
     public void Capabilities_MatchIdbBatchAtomic()
     {
-        var capabilities = new IndexedDbStorageProvider().Capabilities;
+        var capabilities = new BlazorSqliteIndexedDbStorageProvider().Capabilities;
 
         Assert.Equal(BlazorSqliteEngineBuild.AsyncCapable, capabilities.RequiredBuild);
         Assert.True(capabilities.IsPersistent);
@@ -36,10 +36,10 @@ public sealed class IndexedDbStorageProviderTests
     [Fact]
     public void VfsModule_IsDocumentRelative_LikeEveryOtherBlazorAsset()
     {
-        var vfs = new IndexedDbStorageProvider().VfsModule;
+        var vfs = new BlazorSqliteIndexedDbStorageProvider().VfsModule;
 
         Assert.NotNull(vfs);
-        Assert.Equal(IndexedDbStorageProvider.VfsModuleUrl, vfs.ModuleUrl);
+        Assert.Equal(BlazorSqliteIndexedDbStorageProvider.VfsModuleUrl, vfs.ModuleUrl);
         // Relative to the document, not the origin root: an application hosted under a sub-path must
         // still find it. The host resolves it against the document base before the worker imports it.
         Assert.StartsWith("./_content/", vfs.ModuleUrl, StringComparison.Ordinal);
@@ -49,7 +49,7 @@ public sealed class IndexedDbStorageProviderTests
     [Fact]
     public async Task Probe_WithoutJavaScript_ReportsUnavailable()
     {
-        var probe = await new IndexedDbStorageProvider().ProbeAsync(TestContext.Current.CancellationToken);
+        var probe = await new BlazorSqliteIndexedDbStorageProvider().ProbeAsync(TestContext.Current.CancellationToken);
 
         Assert.False(probe.IsAvailable);
         Assert.Contains("browser", probe.UnavailableReason, StringComparison.OrdinalIgnoreCase);

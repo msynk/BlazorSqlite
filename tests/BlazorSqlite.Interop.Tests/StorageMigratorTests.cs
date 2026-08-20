@@ -18,12 +18,12 @@ public sealed class StorageMigratorTests
     [Fact]
     public async Task CopiesTheImage_FlipsTheBinding_AndDeletesTheSource()
     {
-        var source = new InMemoryStorageProvider("source-memory");
-        var target = new InMemoryStorageProvider("target-memory");
-        var store = new InMemoryStorageBindingStore();
+        var source = new BlazorSqliteInMemoryStorageProvider("source-memory");
+        var target = new BlazorSqliteInMemoryStorageProvider("target-memory");
+        var store = new BlazorSqliteInMemoryStorageBindingStore();
         await source.Admin.ImportAsync("app.db", Image, Ct);
 
-        await new StorageMigrator().MigrateAsync("app.db", source, target, store, Ct);
+        await new BlazorSqliteStorageMigrator().MigrateAsync("app.db", source, target, store, Ct);
 
         Assert.False(await source.Admin.ExistsAsync("app.db", Ct));
         Assert.Equal(Image, await target.Admin.ExportAsync("app.db", Ct));
@@ -38,12 +38,12 @@ public sealed class StorageMigratorTests
     [Fact]
     public async Task ASourceHoldingNothing_MovesTheBindingWithoutFailing()
     {
-        var source = new InMemoryStorageProvider("source-memory");
-        var target = new InMemoryStorageProvider("target-memory");
-        var store = new InMemoryStorageBindingStore();
+        var source = new BlazorSqliteInMemoryStorageProvider("source-memory");
+        var target = new BlazorSqliteInMemoryStorageProvider("target-memory");
+        var store = new BlazorSqliteInMemoryStorageBindingStore();
         await store.SetProviderNameAsync("app.db", source.Name, Ct);
 
-        await new StorageMigrator().MigrateAsync("app.db", source, target, store, Ct);
+        await new BlazorSqliteStorageMigrator().MigrateAsync("app.db", source, target, store, Ct);
 
         Assert.Equal(target.Name, await store.GetProviderNameAsync("app.db", Ct));
         Assert.False(await target.Admin.ExistsAsync("app.db", Ct));
@@ -52,13 +52,13 @@ public sealed class StorageMigratorTests
     [Fact]
     public async Task ACorruptImage_LeavesTheSourceAndBindingUntouched()
     {
-        var source = new InMemoryStorageProvider("source-memory");
-        var target = new InMemoryStorageProvider("target-memory");
-        var store = new InMemoryStorageBindingStore();
+        var source = new BlazorSqliteInMemoryStorageProvider("source-memory");
+        var target = new BlazorSqliteInMemoryStorageProvider("target-memory");
+        var store = new BlazorSqliteInMemoryStorageBindingStore();
         await source.Admin.ImportAsync("app.db", new byte[] { 1, 2, 3, 4 }, Ct);
 
         await Assert.ThrowsAsync<BlazorSqliteCorruptDatabaseException>(
-            () => new StorageMigrator().MigrateAsync("app.db", source, target, store, Ct));
+            () => new BlazorSqliteStorageMigrator().MigrateAsync("app.db", source, target, store, Ct));
 
         Assert.True(await source.Admin.ExistsAsync("app.db", Ct));
         Assert.False(await target.Admin.ExistsAsync("app.db", Ct));

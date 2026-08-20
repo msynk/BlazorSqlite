@@ -15,7 +15,7 @@ public sealed class SqliteParameterBindingTests
     [Fact]
     public void DateTime_MatchesMicrosoftDataSqliteText()
     {
-        var value = SqliteParameterBinding.ToTransportValue(
+        var value = BlazorSqliteParameterBinding.ToTransportValue(
             new DateTime(2026, 3, 1, 12, 0, 0, DateTimeKind.Utc));
 
         Assert.Equal("2026-03-01 12:00:00", value);
@@ -26,21 +26,21 @@ public sealed class SqliteParameterBindingTests
     {
         var guid = Guid.Parse("d1e2f3a4-b5c6-4789-abcd-ef0123456789");
 
-        Assert.Equal("D1E2F3A4-B5C6-4789-ABCD-EF0123456789", SqliteParameterBinding.ToTransportValue(guid));
+        Assert.Equal("D1E2F3A4-B5C6-4789-ABCD-EF0123456789", BlazorSqliteParameterBinding.ToTransportValue(guid));
     }
 
     [Fact]
     public void ConvertedValues_AreAcceptedByTheWireFormat()
     {
-        var date = SqliteParameterBinding.ToTransportValue(new DateTime(2026, 1, 1));
-        var guid = SqliteParameterBinding.ToTransportValue(Guid.Empty);
+        var date = BlazorSqliteParameterBinding.ToTransportValue(new DateTime(2026, 1, 1));
+        var guid = BlazorSqliteParameterBinding.ToTransportValue(Guid.Empty);
 
-        var (dateType, dateValue) = SqliteWireFormat.EncodeValue(date, "when");
-        var (guidType, guidValue) = SqliteWireFormat.EncodeValue(guid, "id");
+        var (dateType, dateValue) = BlazorSqliteWireFormat.EncodeValue(date, "when");
+        var (guidType, guidValue) = BlazorSqliteWireFormat.EncodeValue(guid, "id");
 
-        Assert.Equal(SqliteWireFormat.TypeCode.Text, dateType);
+        Assert.Equal(BlazorSqliteWireFormat.TypeCode.Text, dateType);
         Assert.Equal("2026-01-01 00:00:00", dateValue);
-        Assert.Equal(SqliteWireFormat.TypeCode.Text, guidType);
+        Assert.Equal(BlazorSqliteWireFormat.TypeCode.Text, guidType);
         Assert.Equal("00000000-0000-0000-0000-000000000000", guidValue);
     }
 
@@ -51,18 +51,18 @@ public sealed class SqliteParameterBindingTests
         var born = new DateOnly(1978, 4, 12);
         var ordered = new DateTimeOffset(2026, 6, 2, 10, 15, 0, TimeSpan.Zero);
 
-        Assert.Equal(lead, SqliteParameterBinding.FromTransportValue<TimeSpan>(
-            SqliteParameterBinding.ToTransportValue(lead)));
-        Assert.Equal(born, SqliteParameterBinding.FromTransportValue<DateOnly>(
-            SqliteParameterBinding.ToTransportValue(born)));
-        Assert.Equal(ordered, SqliteParameterBinding.FromTransportValue<DateTimeOffset>(
-            SqliteParameterBinding.ToTransportValue(ordered)));
+        Assert.Equal(lead, BlazorSqliteParameterBinding.FromTransportValue<TimeSpan>(
+            BlazorSqliteParameterBinding.ToTransportValue(lead)));
+        Assert.Equal(born, BlazorSqliteParameterBinding.FromTransportValue<DateOnly>(
+            BlazorSqliteParameterBinding.ToTransportValue(born)));
+        Assert.Equal(ordered, BlazorSqliteParameterBinding.FromTransportValue<DateTimeOffset>(
+            BlazorSqliteParameterBinding.ToTransportValue(ordered)));
     }
 
     [Fact]
     public async Task Reader_GetFieldValue_ParsesTimeSpanText()
     {
-        var transport = new ResultTransport(new SqliteCommandResult
+        var transport = new ResultTransport(new BlazorSqliteCommandResult
         {
             ColumnNames = ["lead"],
             ColumnTypes = ["TEXT"],
@@ -95,12 +95,12 @@ public sealed class SqliteParameterBindingTests
 
         var batch = Assert.Single(transport.LastBatch!);
         Assert.Equal("2026-03-01 12:00:00", Assert.Single(batch.Parameters).Value);
-        _ = SqliteWireFormat.EncodeBatch(transport.LastBatch!);
+        _ = BlazorSqliteWireFormat.EncodeBatch(transport.LastBatch!);
     }
 
-    private sealed class CapturingTransport : ISqliteTransport
+    private sealed class CapturingTransport : IBlazorSqliteTransport
     {
-        public IReadOnlyList<SqliteCommandRequest>? LastBatch { get; private set; }
+        public IReadOnlyList<BlazorSqliteCommandRequest>? LastBatch { get; private set; }
 
         public Task OpenAsync(string databaseName, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
@@ -108,18 +108,18 @@ public sealed class SqliteParameterBindingTests
         public Task CloseAsync(CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
-        public Task<IReadOnlyList<SqliteCommandResult>> ExecuteAsync(
-            IReadOnlyList<SqliteCommandRequest> batch,
+        public Task<IReadOnlyList<BlazorSqliteCommandResult>> ExecuteAsync(
+            IReadOnlyList<BlazorSqliteCommandRequest> batch,
             CancellationToken cancellationToken = default)
         {
             LastBatch = batch;
-            return Task.FromResult<IReadOnlyList<SqliteCommandResult>>([new SqliteCommandResult()]);
+            return Task.FromResult<IReadOnlyList<BlazorSqliteCommandResult>>([new BlazorSqliteCommandResult()]);
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    private sealed class ResultTransport(SqliteCommandResult result) : ISqliteTransport
+    private sealed class ResultTransport(BlazorSqliteCommandResult result) : IBlazorSqliteTransport
     {
         public Task OpenAsync(string databaseName, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
@@ -127,10 +127,10 @@ public sealed class SqliteParameterBindingTests
         public Task CloseAsync(CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
-        public Task<IReadOnlyList<SqliteCommandResult>> ExecuteAsync(
-            IReadOnlyList<SqliteCommandRequest> batch,
+        public Task<IReadOnlyList<BlazorSqliteCommandResult>> ExecuteAsync(
+            IReadOnlyList<BlazorSqliteCommandRequest> batch,
             CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<SqliteCommandResult>>([result]);
+            => Task.FromResult<IReadOnlyList<BlazorSqliteCommandResult>>([result]);
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

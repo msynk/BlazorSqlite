@@ -17,7 +17,7 @@ public sealed class BlazorSqliteTransactionTests
     [Fact]
     public async Task Dispose_RollsBackATransactionNobodyCompleted()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "tx.db");
         await connection.OpenAsync(Ct);
         await ExecuteAsync(connection, "CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT)");
@@ -37,7 +37,7 @@ public sealed class BlazorSqliteTransactionTests
     [Fact]
     public async Task Dispose_AfterCommit_LeavesTheWriteInPlace()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "tx.db");
         await connection.OpenAsync(Ct);
         await ExecuteAsync(connection, "CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT)");
@@ -54,7 +54,7 @@ public sealed class BlazorSqliteTransactionTests
     [Fact]
     public async Task Dispose_AfterRollback_DoesNotRollBackTwice()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "tx.db");
         await connection.OpenAsync(Ct);
         await ExecuteAsync(connection, "CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT)");

@@ -6,7 +6,7 @@
 //
 // The tags are SQLite's own type codes, which is why this module can label a value straight from
 // sqlite3_column_type with no translation table. The .NET half mirrors this file exactly; see
-// SqliteWireFormat.
+// BlazorSqliteWireFormat.
 //
 // Encoding has to happen here rather than on the main thread because the distinction between INTEGER 1
 // and REAL 1.0 exists only while the statement is live. By the time a row is a plain JavaScript array,

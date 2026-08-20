@@ -13,7 +13,7 @@ dotnet add package BlazorSqlite.Storage.Opfs
 ```
 
 ```csharp
-new OpfsStorageProvider(jsRuntime)   // ProviderName == "opfs"
+new BlazorSqliteOpfsStorageProvider(jsRuntime)   // ProviderName == "opfs"
 ```
 
 ## Capabilities

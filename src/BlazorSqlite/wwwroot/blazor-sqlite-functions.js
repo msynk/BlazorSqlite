@@ -2,7 +2,7 @@
 //
 // EF only installs these when the connection is a real Microsoft.Data.Sqlite connection. BlazorSqlite
 // supplies its own, so the worker has to. The names, arities, and results match
-// `SqliteFunctions` on the .NET side - S4 is the oracle, and the browser suite repeats it here.
+// `BlazorSqliteFunctions` on the .NET side - S4 is the oracle, and the browser suite repeats it here.
 //
 // Decimals are TEXT. Arithmetic goes through `Decimal`, never through JavaScript numbers: a float
 // would make 1/3 and 0.1 silently wrong, and EF's equality is a string compare against the canonical

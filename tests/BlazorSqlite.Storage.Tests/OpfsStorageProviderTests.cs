@@ -9,14 +9,14 @@ public sealed class OpfsStorageProviderTests
     [Fact]
     public void Name_IsTheStickyBindingKey()
     {
-        Assert.Equal("opfs", new OpfsStorageProvider().Name);
-        Assert.Equal(OpfsStorageProvider.ProviderName, new OpfsStorageProvider().Name);
+        Assert.Equal("opfs", new BlazorSqliteOpfsStorageProvider().Name);
+        Assert.Equal(BlazorSqliteOpfsStorageProvider.ProviderName, new BlazorSqliteOpfsStorageProvider().Name);
     }
 
     [Fact]
     public void Capabilities_MatchOpfsCoopSync()
     {
-        var capabilities = new OpfsStorageProvider().Capabilities;
+        var capabilities = new BlazorSqliteOpfsStorageProvider().Capabilities;
 
         Assert.Equal(BlazorSqliteEngineBuild.Synchronous, capabilities.RequiredBuild);
         Assert.True(capabilities.IsPersistent);
@@ -31,10 +31,10 @@ public sealed class OpfsStorageProviderTests
     [Fact]
     public void VfsModule_IsDocumentRelative_LikeEveryOtherBlazorAsset()
     {
-        var vfs = new OpfsStorageProvider().VfsModule;
+        var vfs = new BlazorSqliteOpfsStorageProvider().VfsModule;
 
         Assert.NotNull(vfs);
-        Assert.Equal(OpfsStorageProvider.VfsModuleUrl, vfs.ModuleUrl);
+        Assert.Equal(BlazorSqliteOpfsStorageProvider.VfsModuleUrl, vfs.ModuleUrl);
         // Relative to the document, not the origin root: an application hosted under a sub-path must
         // still find it. The host resolves it against the document base before the worker imports it.
         Assert.StartsWith("./_content/", vfs.ModuleUrl, StringComparison.Ordinal);
@@ -44,7 +44,7 @@ public sealed class OpfsStorageProviderTests
     [Fact]
     public async Task Probe_WithoutJavaScript_ReportsUnavailable()
     {
-        var probe = await new OpfsStorageProvider().ProbeAsync(TestContext.Current.CancellationToken);
+        var probe = await new BlazorSqliteOpfsStorageProvider().ProbeAsync(TestContext.Current.CancellationToken);
 
         Assert.False(probe.IsAvailable);
         Assert.Contains("browser", probe.UnavailableReason, StringComparison.OrdinalIgnoreCase);

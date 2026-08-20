@@ -15,7 +15,7 @@ public sealed class BlazorSqliteStorageUnavailableException : Exception
     /// <param name="attempts">Every candidate considered, in preference order.</param>
     public BlazorSqliteStorageUnavailableException(
         string databaseName,
-        IReadOnlyList<StorageCandidateOutcome> attempts)
+        IReadOnlyList<BlazorSqliteStorageCandidateOutcome> attempts)
         : base(BuildMessage(databaseName, attempts))
     {
         DatabaseName = databaseName;
@@ -26,11 +26,11 @@ public sealed class BlazorSqliteStorageUnavailableException : Exception
     public string DatabaseName { get; }
 
     /// <summary>Every candidate considered, in preference order, with its outcome.</summary>
-    public IReadOnlyList<StorageCandidateOutcome> Attempts { get; }
+    public IReadOnlyList<BlazorSqliteStorageCandidateOutcome> Attempts { get; }
 
     private static string BuildMessage(
         string databaseName,
-        IReadOnlyList<StorageCandidateOutcome> attempts)
+        IReadOnlyList<BlazorSqliteStorageCandidateOutcome> attempts)
     {
         var lines = attempts.Select(a => $"  - {a}");
 

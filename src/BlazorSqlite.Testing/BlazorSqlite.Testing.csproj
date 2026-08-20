@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <Description>
-      Test support for BlazorSqlite: an in-process ISqliteTransport backed by Microsoft.Data.Sqlite so
+      Test support for BlazorSqlite: an in-process IBlazorSqliteTransport backed by Microsoft.Data.Sqlite so
       the stack can be unit-tested without a browser, and the conformance kit every storage provider
       must pass - inherit the test classes in your provider's test project and supply your provider.
     </Description>

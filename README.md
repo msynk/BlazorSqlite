@@ -29,7 +29,7 @@ var session = await factory.OpenAsync("app.db");
 options.UseBlazorSqlite(session.Connection);
 ```
 
-Selection is sticky: existing data outranks preference. `StorageMigrationMode.AutomaticOnOpen` copies, checks the SQLite header, then flips the binding. `KeepExisting` is the default.
+Selection is sticky: existing data outranks preference. `BlazorSqliteStorageMigrationMode.AutomaticOnOpen` copies, checks the SQLite header, then flips the binding. `KeepExisting` is the default.
 
 ## Live queries
 

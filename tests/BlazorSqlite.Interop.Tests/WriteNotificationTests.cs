@@ -22,7 +22,7 @@ public sealed class WriteNotificationTests
     [Fact]
     public async Task InProcessTransport_ReportsItsOwnWrites_SoTheConnectionDoesNot()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "notify.db");
         await connection.OpenAsync(Ct);
         await ExecuteAsync(connection, "CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT)");
@@ -46,7 +46,7 @@ public sealed class WriteNotificationTests
     [Fact]
     public async Task ACascadingDelete_NamesTheChildTable()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "cascade.db");
         await connection.OpenAsync(Ct);
         await ExecuteAsync(connection, "PRAGMA foreign_keys=ON");
@@ -75,7 +75,7 @@ public sealed class WriteNotificationTests
     [Fact]
     public async Task ATruncatingDelete_StillNamesTheTable()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "truncate.db");
         await connection.OpenAsync(Ct);
         await ExecuteAsync(connection, "CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT)");
@@ -92,7 +92,7 @@ public sealed class WriteNotificationTests
     [Fact]
     public async Task ATransactionsWrites_AreReportedOnceAtCommit()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "tx-notify.db");
         await connection.OpenAsync(Ct);
         await ExecuteAsync(connection, "CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT)");
@@ -120,7 +120,7 @@ public sealed class WriteNotificationTests
     [Fact]
     public async Task ARolledBackTransaction_ReportsNothing()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "tx-rollback.db");
         await connection.OpenAsync(Ct);
         await ExecuteAsync(connection, "CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT)");
@@ -150,7 +150,7 @@ public sealed class WriteNotificationTests
     [Fact]
     public async Task ARawSqlTransaction_IsReportedAtItsCommit()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "tx-raw.db");
         await connection.OpenAsync(Ct);
         await ExecuteAsync(connection, "CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT)");
@@ -236,18 +236,18 @@ public sealed class WriteNotificationTests
     }
 
     /// <summary>A transport that runs nothing and reports nothing - the default contract.</summary>
-    private sealed class SilentTransport : ISqliteTransport
+    private sealed class SilentTransport : IBlazorSqliteTransport
     {
         public Task OpenAsync(string databaseName, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
         public Task CloseAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public Task<IReadOnlyList<SqliteCommandResult>> ExecuteAsync(
-            IReadOnlyList<SqliteCommandRequest> batch,
+        public Task<IReadOnlyList<BlazorSqliteCommandResult>> ExecuteAsync(
+            IReadOnlyList<BlazorSqliteCommandRequest> batch,
             CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<SqliteCommandResult>>(
-                [.. batch.Select(_ => new SqliteCommandResult())]);
+            => Task.FromResult<IReadOnlyList<BlazorSqliteCommandResult>>(
+                [.. batch.Select(_ => new BlazorSqliteCommandResult())]);
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

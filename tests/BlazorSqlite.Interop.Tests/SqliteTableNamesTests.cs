@@ -24,7 +24,7 @@ public sealed class SqliteTableNamesTests
     public void ExtractsTables(string sql, params string[] expected)
         => Assert.Equal(
             expected.Order(StringComparer.OrdinalIgnoreCase),
-            SqliteTableNames.Extract(sql).Order(StringComparer.OrdinalIgnoreCase));
+            BlazorSqliteTableNames.Extract(sql).Order(StringComparer.OrdinalIgnoreCase));
 
     [Theory]
     [InlineData("INSERT INTO product (name) VALUES ('from')", true)]
@@ -42,5 +42,5 @@ public sealed class SqliteTableNamesTests
     [InlineData("WITH ids AS (SELECT 1 AS id) SELECT * FROM product WHERE id IN (SELECT id FROM ids)", false)]
     [InlineData("SELECT * FROM withdrawals", false)]
     public void DistinguishesWrites(string sql, bool write)
-        => Assert.Equal(write, SqliteTableNames.LooksLikeWrite(sql));
+        => Assert.Equal(write, BlazorSqliteTableNames.LooksLikeWrite(sql));
 }

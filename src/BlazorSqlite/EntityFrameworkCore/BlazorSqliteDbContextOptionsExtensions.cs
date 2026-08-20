@@ -47,7 +47,7 @@ public static class BlazorSqliteDbContextOptionsExtensions
 
         // EF Core 10 reads new SqliteConnection().ServerVersion while compiling queries.
         // That requires a PCL provider; WASM has no e_sqlite3 bundle.
-        BrowserSqlitePcl.EnsureInitialized();
+        BlazorSqlitePcl.EnsureInitialized();
         optionsBuilder.UseSqlite(connection, contextOwnsConnection, sqliteOptionsAction);
         ReplaceSyncBoundServices(optionsBuilder);
         return optionsBuilder;

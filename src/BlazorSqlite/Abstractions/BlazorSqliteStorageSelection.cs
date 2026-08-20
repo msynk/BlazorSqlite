@@ -9,7 +9,7 @@ public sealed record BlazorSqliteStorageSelection
     internal BlazorSqliteStorageSelection(
         IReadOnlyList<string> candidates,
         bool allowNonPersistentFallback,
-        StorageMigrationMode migrationMode)
+        BlazorSqliteStorageMigrationMode migrationMode)
     {
         Candidates = candidates;
         AllowNonPersistentFallback = allowNonPersistentFallback;
@@ -29,7 +29,7 @@ public sealed record BlazorSqliteStorageSelection
     public bool AllowNonPersistentFallback { get; }
 
     /// <summary>What to do when a better backend becomes available for an existing database.</summary>
-    public StorageMigrationMode MigrationMode { get; }
+    public BlazorSqliteStorageMigrationMode MigrationMode { get; }
 
     /// <summary>
     /// Whether the choice is strict, meaning a single candidate that must be available or the open

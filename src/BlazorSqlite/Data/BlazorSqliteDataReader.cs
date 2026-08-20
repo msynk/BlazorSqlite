@@ -11,11 +11,11 @@ namespace BlazorSqlite.Data;
 /// </remarks>
 public sealed class BlazorSqliteDataReader : DbDataReader
 {
-    private readonly SqliteCommandResult _result;
+    private readonly BlazorSqliteCommandResult _result;
     private int _rowIndex = -1;
     private bool _closed;
 
-    internal BlazorSqliteDataReader(SqliteCommandResult result) => _result = result;
+    internal BlazorSqliteDataReader(BlazorSqliteCommandResult result) => _result = result;
 
     public override int FieldCount => _result.ColumnNames.Count;
 
@@ -178,7 +178,7 @@ public sealed class BlazorSqliteDataReader : DbDataReader
     public override string GetString(int ordinal) => Convert.ToString(RequireValue(ordinal), CultureInfo.InvariantCulture)!;
 
     public override T GetFieldValue<T>(int ordinal)
-        => SqliteParameterBinding.FromTransportValue<T>(IsDBNull(ordinal) ? null : RequireValue(ordinal));
+        => BlazorSqliteParameterBinding.FromTransportValue<T>(IsDBNull(ordinal) ? null : RequireValue(ordinal));
 
     public override Task<T> GetFieldValueAsync<T>(int ordinal, CancellationToken cancellationToken)
         => Task.FromResult(GetFieldValue<T>(ordinal));

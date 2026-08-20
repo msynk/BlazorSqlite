@@ -6,12 +6,12 @@ using BlazorSqlite.Testing;
 namespace BlazorSqlite.EntityFrameworkCore.Tests;
 
 /// <summary>
-/// An <see cref="ISqliteTransport"/> that pushes every parameter through the real wire format
+/// An <see cref="IBlazorSqliteTransport"/> that pushes every parameter through the real wire format
 /// before executing it in-process.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <see cref="InProcessSqliteTransport"/> hands CLR values straight to Microsoft.Data.Sqlite, which
+/// <see cref="BlazorSqliteInProcessTransport"/> hands CLR values straight to Microsoft.Data.Sqlite, which
 /// applies its own conversions. That is the right thing for testing SQL generation, but it means
 /// the desktop suite never sees the encoding the browser actually stores - so a value the worker
 /// would write differently from the server looks fine in every test and is wrong only in
@@ -19,13 +19,13 @@ namespace BlazorSqlite.EntityFrameworkCore.Tests;
 /// </para>
 /// <para>
 /// This closes that gap by doing what the worker does: encode with
-/// <see cref="SqliteWireFormat"/>, decode the tagged value back, and bind the result. What EF
+/// <see cref="BlazorSqliteWireFormat"/>, decode the tagged value back, and bind the result. What EF
 /// stores through this transport is byte-for-byte what it would store through a worker.
 /// </para>
 /// </remarks>
-internal sealed class WireLoopbackTransport : ISqliteTransport
+internal sealed class WireLoopbackTransport : IBlazorSqliteTransport
 {
-    private readonly InProcessSqliteTransport _inner = new();
+    private readonly BlazorSqliteInProcessTransport _inner = new();
 
     public Task OpenAsync(string databaseName, CancellationToken cancellationToken = default)
         => _inner.OpenAsync(databaseName, cancellationToken);
@@ -33,19 +33,19 @@ internal sealed class WireLoopbackTransport : ISqliteTransport
     public Task CloseAsync(CancellationToken cancellationToken = default)
         => _inner.CloseAsync(cancellationToken);
 
-    public Task<IReadOnlyList<SqliteCommandResult>> ExecuteAsync(
-        IReadOnlyList<SqliteCommandRequest> batch,
+    public Task<IReadOnlyList<BlazorSqliteCommandResult>> ExecuteAsync(
+        IReadOnlyList<BlazorSqliteCommandRequest> batch,
         CancellationToken cancellationToken = default)
     {
-        var encoded = SqliteWireFormat.EncodeBatch(batch);
-        var rebound = new SqliteCommandRequest[batch.Count];
+        var encoded = BlazorSqliteWireFormat.EncodeBatch(batch);
+        var rebound = new BlazorSqliteCommandRequest[batch.Count];
 
         for (var i = 0; i < batch.Count; i++)
         {
             rebound[i] = batch[i] with
             {
                 Parameters = [.. encoded[i].Parameters.Select(
-                    p => new SqliteParameterValue(p.Name, Decode(p.Type, p.Value)))],
+                    p => new BlazorSqliteParameterValue(p.Name, Decode(p.Type, p.Value)))],
             };
         }
 
@@ -57,12 +57,12 @@ internal sealed class WireLoopbackTransport : ISqliteTransport
     /// <summary>Mirrors <c>decodeParameter</c> in <c>blazor-sqlite-wire.js</c>.</summary>
     private static object? Decode(int type, object? value) => type switch
     {
-        SqliteWireFormat.TypeCode.Null => null,
-        SqliteWireFormat.TypeCode.Integer => value is string text
+        BlazorSqliteWireFormat.TypeCode.Null => null,
+        BlazorSqliteWireFormat.TypeCode.Integer => value is string text
             ? long.Parse(text, CultureInfo.InvariantCulture)
             : value,
-        SqliteWireFormat.TypeCode.Real or SqliteWireFormat.TypeCode.Text => value,
-        SqliteWireFormat.TypeCode.Blob => Convert.FromBase64String((string)value!),
+        BlazorSqliteWireFormat.TypeCode.Real or BlazorSqliteWireFormat.TypeCode.Text => value,
+        BlazorSqliteWireFormat.TypeCode.Blob => Convert.FromBase64String((string)value!),
         _ => throw new FormatException($"Unknown wire type tag {type}."),
     };
 }

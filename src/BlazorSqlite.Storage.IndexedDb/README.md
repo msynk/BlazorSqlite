@@ -14,7 +14,7 @@ dotnet add package BlazorSqlite.Storage.IndexedDb
 ```
 
 ```csharp
-new IndexedDbStorageProvider(jsRuntime)   // ProviderName == "indexeddb"
+new BlazorSqliteIndexedDbStorageProvider(jsRuntime)   // ProviderName == "indexeddb"
 ```
 
 ## Capabilities

@@ -15,7 +15,7 @@ public sealed class SchemaTests
     [Fact]
     public async Task EnsureCreatedAsync_CreatesAUsableSchema()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var ctx = ContextFactory.Create(transport);
 
         Assert.True(await ctx.Database.EnsureCreatedAsync(Ct));
@@ -32,7 +32,7 @@ public sealed class SchemaTests
     [Fact]
     public async Task EnsureCreatedAsync_IsIdempotent()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var ctx = ContextFactory.Create(transport);
 
         Assert.True(await ctx.Database.EnsureCreatedAsync(Ct));
@@ -42,7 +42,7 @@ public sealed class SchemaTests
     [Fact]
     public async Task MigrateAsync_AppliesMigrations_AndRecordsHistory()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var ctx = ContextFactory.Create(transport);
 
         Assert.Equal(["20260101000000_InitialCreate"], await ctx.Database.GetPendingMigrationsAsync(Ct));
@@ -64,7 +64,7 @@ public sealed class SchemaTests
     [Fact]
     public async Task MigrateAsync_IsIdempotent()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var ctx = ContextFactory.Create(transport);
 
         await ctx.Database.MigrateAsync(Ct);
@@ -76,7 +76,7 @@ public sealed class SchemaTests
     [Fact]
     public async Task EnsureDeletedAsync_DropsUserTables_NotSqliteBookkeeping()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var ctx = ContextFactory.Create(transport);
         await ctx.Database.EnsureCreatedAsync(Ct);
 
@@ -95,7 +95,7 @@ public sealed class SchemaTests
     [Fact]
     public async Task EnsureDeletedAsync_CopesWithReferencedRowsAndViews_AndLeavesForeignKeysOn()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var ctx = ContextFactory.Create(transport);
         await ctx.Database.EnsureCreatedAsync(Ct);
 
@@ -124,7 +124,7 @@ public sealed class SchemaTests
     [Fact]
     public async Task SynchronousSchemaApis_StillThrow()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var ctx = ContextFactory.Create(transport);
 
         Assert.Throws<BlazorSqliteSynchronousApiNotSupportedException>(

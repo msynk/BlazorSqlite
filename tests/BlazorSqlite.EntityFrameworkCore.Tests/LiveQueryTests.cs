@@ -12,7 +12,7 @@ public sealed class LiveQueryTests
     [Fact]
     public async Task AsLiveQuery_RerunsAfterSaveChanges()
     {
-        var transport = new InProcessSqliteTransport();
+        var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "live-ef.db");
         await connection.OpenAsync(Ct);
         await using var ctx = new ProductContext(new DbContextOptionsBuilder<ProductContext>()
@@ -45,7 +45,7 @@ public sealed class LiveQueryTests
         // on the thread pool the refresh runs concurrently with the rest of SaveChanges. Without the
         // save gate the re-read tracked the new row while EF was still assigning its key, and the
         // *write* failed with "another instance with the same key value is already being tracked".
-        var transport = new InProcessSqliteTransport();
+        var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "live-ef-race.db");
         await connection.OpenAsync(Ct);
         await using var ctx = new ProductContext(new DbContextOptionsBuilder<ProductContext>()
@@ -83,7 +83,7 @@ public sealed class LiveQueryTests
     {
         // The sample calls OrderBy(...).AsLiveQuery() with no connection argument. DbSet exposes
         // the context through IInfrastructure; EntityQueryable after OrderBy/Where does not.
-        var transport = new InProcessSqliteTransport();
+        var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "live-composed.db");
         await connection.OpenAsync(Ct);
         await using var ctx = new ProductContext(new DbContextOptionsBuilder<ProductContext>()

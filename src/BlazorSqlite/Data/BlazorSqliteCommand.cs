@@ -61,13 +61,13 @@ public sealed class BlazorSqliteCommand : DbCommand
 
     public override async Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
     {
-        var result = await ExecuteCoreAsync(SqliteResultKind.NonQuery, cancellationToken).ConfigureAwait(false);
+        var result = await ExecuteCoreAsync(BlazorSqliteResultKind.NonQuery, cancellationToken).ConfigureAwait(false);
         return result.RecordsAffected;
     }
 
     public override async Task<object?> ExecuteScalarAsync(CancellationToken cancellationToken)
     {
-        var result = await ExecuteCoreAsync(SqliteResultKind.Scalar, cancellationToken).ConfigureAwait(false);
+        var result = await ExecuteCoreAsync(BlazorSqliteResultKind.Scalar, cancellationToken).ConfigureAwait(false);
         return result.Rows.Count > 0 && result.Rows[0].Length > 0 ? result.Rows[0][0] : null;
     }
 
@@ -75,12 +75,12 @@ public sealed class BlazorSqliteCommand : DbCommand
         CommandBehavior behavior,
         CancellationToken cancellationToken)
     {
-        var result = await ExecuteCoreAsync(SqliteResultKind.Reader, cancellationToken).ConfigureAwait(false);
+        var result = await ExecuteCoreAsync(BlazorSqliteResultKind.Reader, cancellationToken).ConfigureAwait(false);
         return new BlazorSqliteDataReader(result);
     }
 
-    private async Task<SqliteCommandResult> ExecuteCoreAsync(
-        SqliteResultKind resultKind,
+    private async Task<BlazorSqliteCommandResult> ExecuteCoreAsync(
+        BlazorSqliteResultKind resultKind,
         CancellationToken cancellationToken)
     {
         if (_connection is null)
@@ -88,17 +88,17 @@ public sealed class BlazorSqliteCommand : DbCommand
             throw new InvalidOperationException("The command requires an open connection.");
         }
 
-        var parameters = new List<SqliteParameterValue>(DbParameterCollection.Count);
+        var parameters = new List<BlazorSqliteParameterValue>(DbParameterCollection.Count);
         foreach (BlazorSqliteParameter parameter in DbParameterCollection)
         {
-            parameters.Add(new SqliteParameterValue(
+            parameters.Add(new BlazorSqliteParameterValue(
                 parameter.ParameterName,
-                SqliteParameterBinding.ToTransportValue(parameter.Value)));
+                BlazorSqliteParameterBinding.ToTransportValue(parameter.Value)));
         }
 
-        SqliteFeatureGuards.EnsureSupported(CommandText, _connection.RuntimeLimits);
+        BlazorSqliteFeatureGuards.EnsureSupported(CommandText, _connection.RuntimeLimits);
 
-        var request = new SqliteCommandRequest
+        var request = new BlazorSqliteCommandRequest
         {
             CommandText = CommandText,
             Parameters = parameters,
@@ -108,9 +108,9 @@ public sealed class BlazorSqliteCommand : DbCommand
             .ExecuteAsync([request], cancellationToken)
             .ConfigureAwait(false);
 
-        if (SqliteTableNames.LooksLikeWrite(CommandText))
+        if (BlazorSqliteTableNames.LooksLikeWrite(CommandText))
         {
-            _connection.OnCommandWrote(SqliteTableNames.Extract(CommandText));
+            _connection.OnCommandWrote(BlazorSqliteTableNames.Extract(CommandText));
         }
 
         return results[0];

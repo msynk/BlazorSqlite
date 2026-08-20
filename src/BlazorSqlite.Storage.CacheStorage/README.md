@@ -13,7 +13,7 @@ dotnet add package BlazorSqlite.Storage.CacheStorage
 ```
 
 ```csharp
-new CacheStorageProvider(jsRuntime)   // ProviderName == "cache-storage"
+new BlazorSqliteCacheStorageProvider(jsRuntime)   // ProviderName == "cache-storage"
 ```
 
 ## Capabilities

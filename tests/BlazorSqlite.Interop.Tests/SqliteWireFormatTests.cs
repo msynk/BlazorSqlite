@@ -16,20 +16,20 @@ public sealed class SqliteWireFormatTests
     [Fact]
     public void EncodeBatch_WritesTheShapeTheWorkerBinds()
     {
-        var json = Serialize(SqliteWireFormat.EncodeBatch(
+        var json = Serialize(BlazorSqliteWireFormat.EncodeBatch(
         [
-            new SqliteCommandRequest
+            new BlazorSqliteCommandRequest
             {
                 CommandText = "INSERT INTO t (n) VALUES (@n)",
-                ResultKind = SqliteResultKind.NonQuery,
-                Parameters = [new SqliteParameterValue("@n", 7)],
+                ResultKind = BlazorSqliteResultKind.NonQuery,
+                Parameters = [new BlazorSqliteParameterValue("@n", 7)],
             },
         ]));
 
         Assert.Equal("INSERT INTO t (n) VALUES (@n)", json[0].GetProperty("commandText").GetString());
         Assert.Equal("nonQuery", json[0].GetProperty("resultKind").GetString());
         Assert.Equal("@n", json[0].GetProperty("parameters")[0].GetProperty("name").GetString());
-        Assert.Equal(SqliteWireFormat.TypeCode.Integer, json[0].GetProperty("parameters")[0].GetProperty("type").GetInt32());
+        Assert.Equal(BlazorSqliteWireFormat.TypeCode.Integer, json[0].GetProperty("parameters")[0].GetProperty("type").GetInt32());
         Assert.Equal(7, json[0].GetProperty("parameters")[0].GetProperty("value").GetInt64());
     }
 
@@ -41,7 +41,7 @@ public sealed class SqliteWireFormatTests
     [InlineData(-9007199254740991)]
     public void IntegersInsideTheSafeRange_TravelAsJsonNumbers(long value)
     {
-        var (_, encoded) = SqliteWireFormat.EncodeValue(value, "p");
+        var (_, encoded) = BlazorSqliteWireFormat.EncodeValue(value, "p");
 
         Assert.Equal(value, encoded);
         Assert.IsType<long>(encoded);
@@ -54,16 +54,16 @@ public sealed class SqliteWireFormatTests
     [InlineData(long.MinValue)]
     public void IntegersOutsideTheSafeRange_TravelAsDecimalStrings(long value)
     {
-        var (type, encoded) = SqliteWireFormat.EncodeValue(value, "p");
+        var (type, encoded) = BlazorSqliteWireFormat.EncodeValue(value, "p");
 
-        Assert.Equal(SqliteWireFormat.TypeCode.Integer, type);
+        Assert.Equal(BlazorSqliteWireFormat.TypeCode.Integer, type);
         Assert.Equal(value.ToString(CultureInfo.InvariantCulture), encoded);
     }
 
     [Fact]
     public void Decode_RestoresALargeIntegerFromItsDecimalString()
     {
-        var results = SqliteWireFormat.DecodeResults(Parse(
+        var results = BlazorSqliteWireFormat.DecodeResults(Parse(
             """
             [{
               "columnNames": ["v"],
@@ -79,7 +79,7 @@ public sealed class SqliteWireFormatTests
     [Fact]
     public void Decode_AcceptsASafeIntegerAsAJsonNumber()
     {
-        var results = SqliteWireFormat.DecodeResults(Parse(
+        var results = BlazorSqliteWireFormat.DecodeResults(Parse(
             """[{ "columnNames": ["v"], "columnTypes": ["INTEGER"], "rows": [{ "t": [1], "v": [42] }] }]"""));
 
         Assert.Equal(42L, Assert.Single(Assert.Single(Assert.Single(results).Rows)));
@@ -94,12 +94,12 @@ public sealed class SqliteWireFormatTests
     [Fact]
     public void InfinityAndNaN_SurviveTheWire()
     {
-        Assert.Equal((SqliteWireFormat.TypeCode.Real, "Infinity"), SqliteWireFormat.EncodeValue(double.PositiveInfinity, "p"));
-        Assert.Equal((SqliteWireFormat.TypeCode.Real, "-Infinity"), SqliteWireFormat.EncodeValue(double.NegativeInfinity, "p"));
-        Assert.Equal((SqliteWireFormat.TypeCode.Real, "Infinity"), SqliteWireFormat.EncodeValue(float.PositiveInfinity, "p"));
-        Assert.Equal((SqliteWireFormat.TypeCode.Null, (object?)null), SqliteWireFormat.EncodeValue(double.NaN, "p"));
+        Assert.Equal((BlazorSqliteWireFormat.TypeCode.Real, "Infinity"), BlazorSqliteWireFormat.EncodeValue(double.PositiveInfinity, "p"));
+        Assert.Equal((BlazorSqliteWireFormat.TypeCode.Real, "-Infinity"), BlazorSqliteWireFormat.EncodeValue(double.NegativeInfinity, "p"));
+        Assert.Equal((BlazorSqliteWireFormat.TypeCode.Real, "Infinity"), BlazorSqliteWireFormat.EncodeValue(float.PositiveInfinity, "p"));
+        Assert.Equal((BlazorSqliteWireFormat.TypeCode.Null, (object?)null), BlazorSqliteWireFormat.EncodeValue(double.NaN, "p"));
 
-        var results = SqliteWireFormat.DecodeResults(Parse(
+        var results = BlazorSqliteWireFormat.DecodeResults(Parse(
             """[{ "columnNames": ["v"], "columnTypes": ["REAL"], "rows": [{ "t": [2, 2, 2], "v": ["Infinity", "-Infinity", 1.5] }] }]"""));
 
         Assert.Equal(
@@ -111,19 +111,19 @@ public sealed class SqliteWireFormatTests
     public void Blob_RoundTripsThroughBase64()
     {
         byte[] blob = [0, 1, 250, 255];
-        var encoded = SqliteWireFormat.EncodeBatch(
+        var encoded = BlazorSqliteWireFormat.EncodeBatch(
         [
-            new SqliteCommandRequest
+            new BlazorSqliteCommandRequest
             {
                 CommandText = "INSERT INTO t (b) VALUES (@b)",
-                Parameters = [new SqliteParameterValue("@b", blob)],
+                Parameters = [new BlazorSqliteParameterValue("@b", blob)],
             },
         ]);
 
-        Assert.Equal(SqliteWireFormat.TypeCode.Blob, encoded[0].Parameters[0].Type);
+        Assert.Equal(BlazorSqliteWireFormat.TypeCode.Blob, encoded[0].Parameters[0].Type);
         Assert.Equal(Convert.ToBase64String(blob), encoded[0].Parameters[0].Value);
 
-        var results = SqliteWireFormat.DecodeResults(Parse(
+        var results = BlazorSqliteWireFormat.DecodeResults(Parse(
             $$"""
             [{
               "columnNames": ["b"],
@@ -138,13 +138,13 @@ public sealed class SqliteWireFormatTests
     [Fact]
     public void NullBoolDecimalAndText_HaveOneObviousEncodingEach()
     {
-        Assert.Equal((SqliteWireFormat.TypeCode.Null, (object?)null), SqliteWireFormat.EncodeValue(null, "p"));
-        Assert.Equal((SqliteWireFormat.TypeCode.Null, (object?)null), SqliteWireFormat.EncodeValue(DBNull.Value, "p"));
-        Assert.Equal((SqliteWireFormat.TypeCode.Integer, 1L), SqliteWireFormat.EncodeValue(true, "p"));
-        Assert.Equal((SqliteWireFormat.TypeCode.Integer, 0L), SqliteWireFormat.EncodeValue(false, "p"));
-        Assert.Equal((SqliteWireFormat.TypeCode.Text, "1.25"), SqliteWireFormat.EncodeValue(1.250m, "p"));
-        Assert.Equal((SqliteWireFormat.TypeCode.Text, "hi"), SqliteWireFormat.EncodeValue("hi", "p"));
-        Assert.Equal((SqliteWireFormat.TypeCode.Real, 1.5d), SqliteWireFormat.EncodeValue(1.5d, "p"));
+        Assert.Equal((BlazorSqliteWireFormat.TypeCode.Null, (object?)null), BlazorSqliteWireFormat.EncodeValue(null, "p"));
+        Assert.Equal((BlazorSqliteWireFormat.TypeCode.Null, (object?)null), BlazorSqliteWireFormat.EncodeValue(DBNull.Value, "p"));
+        Assert.Equal((BlazorSqliteWireFormat.TypeCode.Integer, 1L), BlazorSqliteWireFormat.EncodeValue(true, "p"));
+        Assert.Equal((BlazorSqliteWireFormat.TypeCode.Integer, 0L), BlazorSqliteWireFormat.EncodeValue(false, "p"));
+        Assert.Equal((BlazorSqliteWireFormat.TypeCode.Text, "1.25"), BlazorSqliteWireFormat.EncodeValue(1.250m, "p"));
+        Assert.Equal((BlazorSqliteWireFormat.TypeCode.Text, "hi"), BlazorSqliteWireFormat.EncodeValue("hi", "p"));
+        Assert.Equal((BlazorSqliteWireFormat.TypeCode.Real, 1.5d), BlazorSqliteWireFormat.EncodeValue(1.5d, "p"));
     }
 
     /// <summary>
@@ -165,7 +165,7 @@ public sealed class SqliteWireFormatTests
     {
         var value = decimal.Parse(clr, CultureInfo.InvariantCulture);
 
-        Assert.Equal((SqliteWireFormat.TypeCode.Text, expected), SqliteWireFormat.EncodeValue(value, "p"));
+        Assert.Equal((BlazorSqliteWireFormat.TypeCode.Text, expected), BlazorSqliteWireFormat.EncodeValue(value, "p"));
         Assert.Equal(expected, StoredByMicrosoftDataSqlite(value));
     }
 
@@ -185,9 +185,9 @@ public sealed class SqliteWireFormatTests
     public void DatesAndGuids_AreRejected_SoTheTypeMappingOwnsTheChoice()
     {
         var date = Assert.Throws<NotSupportedException>(
-            () => SqliteWireFormat.EncodeValue(new DateTime(2026, 1, 1), "when"));
+            () => BlazorSqliteWireFormat.EncodeValue(new DateTime(2026, 1, 1), "when"));
         var guid = Assert.Throws<NotSupportedException>(
-            () => SqliteWireFormat.EncodeValue(Guid.Empty, "id"));
+            () => BlazorSqliteWireFormat.EncodeValue(Guid.Empty, "id"));
 
         Assert.Contains("when", date.Message);
         Assert.Contains("id", guid.Message);
@@ -204,20 +204,20 @@ public sealed class SqliteWireFormatTests
     [InlineData("""{ "ok": "yes", "result": 1 }""")]
     [InlineData("[]")]
     public void DecodeCall_ReportsAMalformedEnvelope_AsAFormatException(string json)
-        => Assert.Throws<FormatException>(() => SqliteWireFormat.DecodeCall(Parse(json)));
+        => Assert.Throws<FormatException>(() => BlazorSqliteWireFormat.DecodeCall(Parse(json)));
 
     [Theory]
     [InlineData("""[{ "rows": [{ "v": [1] }] }]""")]
     [InlineData("""[{ "rows": [{ "t": 1, "v": [1] }] }]""")]
     [InlineData("""[{ "rows": [{ "t": [1, 3], "v": [1] }] }]""")]
     public void DecodeResults_ReportsAMalformedRow_AsAFormatException(string json)
-        => Assert.Throws<FormatException>(() => SqliteWireFormat.DecodeResults(Parse(json)));
+        => Assert.Throws<FormatException>(() => BlazorSqliteWireFormat.DecodeResults(Parse(json)));
 
     [Fact]
     public void AnUnsignedIntegerPastInt64_IsRejectedRatherThanWrapped()
     {
         var error = Assert.Throws<NotSupportedException>(
-            () => SqliteWireFormat.EncodeValue(ulong.MaxValue, "p"));
+            () => BlazorSqliteWireFormat.EncodeValue(ulong.MaxValue, "p"));
 
         Assert.Contains("64-bit signed INTEGER", error.Message);
     }
@@ -225,7 +225,7 @@ public sealed class SqliteWireFormatTests
     [Fact]
     public void DecodeCall_ReturnsTheResult_WhenTheWorkerSucceeded()
     {
-        var result = SqliteWireFormat.DecodeCall(Parse("""{ "ok": true, "result": [1, 2] }"""));
+        var result = BlazorSqliteWireFormat.DecodeCall(Parse("""{ "ok": true, "result": [1, 2] }"""));
 
         Assert.Equal(2, result.GetArrayLength());
     }
@@ -234,7 +234,7 @@ public sealed class SqliteWireFormatTests
     public void DecodeCall_ThrowsBlazorSqliteException_CarryingTheResultCode()
     {
         var error = Assert.Throws<BlazorSqliteException>(
-            () => SqliteWireFormat.DecodeCall(Parse(
+            () => BlazorSqliteWireFormat.DecodeCall(Parse(
                 """{ "ok": false, "error": { "message": "UNIQUE constraint failed", "sqliteCode": 19 } }""")));
 
         Assert.Equal("UNIQUE constraint failed", error.Message);
@@ -245,7 +245,7 @@ public sealed class SqliteWireFormatTests
     public void DecodeCall_ThrowsWithoutACode_WhenTheFailureIsTheTransports()
     {
         var error = Assert.Throws<BlazorSqliteException>(
-            () => SqliteWireFormat.DecodeCall(Parse(
+            () => BlazorSqliteWireFormat.DecodeCall(Parse(
                 """{ "ok": false, "error": { "message": "No database is open in this worker.", "sqliteCode": null } }""")));
 
         Assert.Null(error.SqliteErrorCode);
@@ -254,14 +254,14 @@ public sealed class SqliteWireFormatTests
     [Fact]
     public void DecodeCall_RejectsABareArray_SoAMissingEnvelopeCannotBeMistakenForSuccess()
     {
-        Assert.Throws<FormatException>(() => SqliteWireFormat.DecodeCall(Parse("[1]")));
+        Assert.Throws<FormatException>(() => BlazorSqliteWireFormat.DecodeCall(Parse("[1]")));
     }
 
     [Fact]
     public void DecodeResults_RejectsARowWhoseTypesAndValuesDisagree()
     {
         Assert.Throws<FormatException>(
-            () => SqliteWireFormat.DecodeResults(Parse(
+            () => BlazorSqliteWireFormat.DecodeResults(Parse(
                 """[{ "rows": [{ "t": [1, 3], "v": [1] }] }]""")));
     }
 

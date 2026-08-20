@@ -8,7 +8,7 @@ public sealed class BlazorSqliteStorageSelectionBuilder
 {
     private readonly List<string> _candidates = [];
     private bool _allowNonPersistentFallback;
-    private StorageMigrationMode _migrationMode = StorageMigrationMode.KeepExisting;
+    private BlazorSqliteStorageMigrationMode _migrationMode = BlazorSqliteStorageMigrationMode.KeepExisting;
 
     /// <summary>Sets the first choice. Calling it more than once is a configuration mistake.</summary>
     public BlazorSqliteStorageSelectionBuilder Prefer(string providerName)
@@ -61,7 +61,7 @@ public sealed class BlazorSqliteStorageSelectionBuilder
     }
 
     /// <summary>Sets what happens when a better backend becomes available later.</summary>
-    public BlazorSqliteStorageSelectionBuilder WithMigrationMode(StorageMigrationMode mode)
+    public BlazorSqliteStorageSelectionBuilder WithMigrationMode(BlazorSqliteStorageMigrationMode mode)
     {
         _migrationMode = mode;
         return this;

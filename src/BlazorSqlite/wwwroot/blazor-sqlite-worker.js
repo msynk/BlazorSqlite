@@ -267,7 +267,7 @@ async function executeOne({ sqlite3, module, db }, request) {
  * which changes no row, and `DELETE FROM t` with no WHERE, where SQLite's truncate optimisation
  * bypasses the hook. The statement text covers both, at the cost of the odd extra name - a comment
  * or string that happens to contain a keyword - which only causes an extra re-query, never a missed
- * one. Mirrors SqliteTableNames on the .NET side.
+ * one. Mirrors BlazorSqliteTableNames on the .NET side.
  *
  * Nothing is sent while a transaction is open: a live query in another tab that re-ran on an
  * uncommitted write would read the old data and then never hear about the commit. Once the
@@ -305,7 +305,7 @@ function notifyIfCommitted({ sqlite3, db, databaseName, changes }, batch) {
 
 // Every statement, not just the first: a batch is routinely `BEGIN; INSERT …; COMMIT;`, and looking
 // only at the leading keyword would call that a read. A leading common table expression is skipped
-// for the same reason: `WITH … INSERT INTO` is a write. Mirrors SqliteTableNames.LooksLikeWrite.
+// for the same reason: `WITH … INSERT INTO` is a write. Mirrors BlazorSqliteTableNames.LooksLikeWrite.
 function looksLikeWrite(sql) {
   return typeof sql === 'string'
     && /(?:^|;)\s*(?:with\b[\s\S]*?)?\b(?:insert|update|delete|replace|create|drop|alter)\b/i.test(sql);
@@ -313,7 +313,7 @@ function looksLikeWrite(sql) {
 
 // Table-level and deliberately coarse. Accepts the identifier quoting SQLite does ("t", `t`, [t]),
 // a schema prefix (main."t"), and the conflict clause an UPDATE may carry (UPDATE OR REPLACE t).
-// Mirrors SqliteTableNames.Extract.
+// Mirrors BlazorSqliteTableNames.Extract.
 function extractTables(sql) {
   const names = [];
   const pattern = /\b(?:from|join|into|update(?:\s+or\s+(?:rollback|abort|replace|fail|ignore))?|table)\s+(?:if\s+(?:not\s+)?exists\s+)?(?:["`[]?[A-Za-z_]\w*["`\]]?\s*\.\s*)?["`[]?([A-Za-z_]\w*)/gi;
