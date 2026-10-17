@@ -1,12 +1,14 @@
+using System.Buffers;
+using System.Buffers.Binary;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using BlazorSqlite.Data;
 
 namespace BlazorSqlite.Interop;
 
 /// <summary>
-/// Translates between the ADO.NET layer's types and the JSON the browser transport carries.
+/// Translates between the ADO.NET layer's types and the bytes the browser transport carries.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -16,20 +18,33 @@ namespace BlazorSqlite.Interop;
 /// are quiet, which is why the format is explicit rather than incidental.
 /// </para>
 /// <para>
-/// Every value therefore travels with its SQLite storage class, using SQLite's own type codes so the
-/// JavaScript half can label values from <c>sqlite3_column_type</c> without a translation table. Rows
-/// are sent as parallel type and value arrays rather than as objects per value: the type of a column is
-/// usually but not necessarily uniform, so per-cell fidelity is required, and one small array per row
-/// is much cheaper than an object per cell.
+/// The format is binary and little-endian. A batch is one byte array, a reply is one byte array, and
+/// Blazor marshals byte arrays across JS interop without base64 or JSON parsing, so a result set
+/// costs one allocation and a linear scan rather than a document object model. Every value travels
+/// with its SQLite storage class, using SQLite's own type codes so the JavaScript half can label
+/// values from <c>sqlite3_column_type</c> without a translation table.
+/// <c>blazor-sqlite-wire.js</c> is the other half of this file and must agree with it byte for byte.
 /// </para>
 /// <para>
-/// This is a JSON encoding because it must survive Blazor's JS interop, which serializes arguments.
-/// It is also the layer to replace when interop cost shows up in the S2 measurements - the ADO.NET
-/// layer never sees it, so a byte-oriented marshaller can be swapped in without touching anything above.
+/// Layout of a batch: magic, version, request count, then per request the SQL (length-prefixed
+/// UTF-8), a result-kind byte, a signed 32-bit row limit (-1 for none), and the parameters as
+/// name, type tag, and payload. Layout of a reply: magic, version, status; on failure a message, a
+/// result code (-1 for none), and an error name; on success a result count and per result the
+/// columns (name and storage class), records affected, last insert rowid, the rows as tagged
+/// cells, and the tables the request changed.
 /// </para>
 /// </remarks>
 public static class SqliteWireFormat
 {
+    /// <summary>First byte of every message, so a stray buffer is rejected rather than misread.</summary>
+    public const byte Magic = 0xB5;
+
+    /// <summary>Bumped whenever the layout changes; the decoder refuses anything else.</summary>
+    public const byte Version = 1;
+
+    private const byte StatusOk = 0;
+    private const byte StatusError = 1;
+
     /// <summary>SQLite's storage class codes, used verbatim as the wire type tags.</summary>
     public static class TypeCode
     {
@@ -49,49 +64,112 @@ public static class SqliteWireFormat
         public const int Null = 5;
     }
 
-    /// <summary>
-    /// Integers up to this magnitude are sent as JSON numbers; beyond it they are sent as decimal
-    /// strings, because a JavaScript number can no longer represent them exactly.
-    /// </summary>
-    private const long MaxExactInteger = 9007199254740991; // 2^53 - 1
+    private static readonly string[] StorageClassNames = [string.Empty, "INTEGER", "REAL", "TEXT", "BLOB"];
+
+    // ---------------------------------------------------------------------------------------------
+    // Encoding a batch
+    // ---------------------------------------------------------------------------------------------
 
     /// <summary>Encodes a batch for the worker.</summary>
-    public static WireRequest[] EncodeBatch(IReadOnlyList<SqliteCommandRequest> batch)
+    public static byte[] EncodeBatch(IReadOnlyList<SqliteCommandRequest> batch)
     {
         ArgumentNullException.ThrowIfNull(batch);
 
-        var encoded = new WireRequest[batch.Count];
+        var writer = new WireWriter(EstimateBatchSize(batch));
+        writer.WriteByte(Magic);
+        writer.WriteByte(Version);
+        writer.WriteUInt32((uint)batch.Count);
+
         for (var i = 0; i < batch.Count; i++)
         {
-            encoded[i] = EncodeRequest(batch[i]);
+            var request = batch[i];
+            writer.WriteString(request.CommandText);
+            writer.WriteByte(EncodeResultKind(request.ResultKind));
+            writer.WriteInt32(request.RowLimit is { } limit && limit >= 0 ? limit : -1);
+
+            var parameters = request.Parameters;
+            if (parameters.Count > ushort.MaxValue)
+            {
+                throw new NotSupportedException(
+                    $"A request carries {parameters.Count} parameters; the wire format allows {ushort.MaxValue}.");
+            }
+
+            writer.WriteUInt16((ushort)parameters.Count);
+            for (var p = 0; p < parameters.Count; p++)
+            {
+                var parameter = parameters[p];
+                writer.WriteString(parameter.Name);
+                WriteValue(ref writer, parameter.Value, parameter.Name);
+            }
         }
 
-        return encoded;
+        return writer.ToArray();
     }
 
-    private static WireRequest EncodeRequest(SqliteCommandRequest request)
+    private static int EstimateBatchSize(IReadOnlyList<SqliteCommandRequest> batch)
     {
-        var parameters = new WireParameter[request.Parameters.Count];
-        for (var i = 0; i < request.Parameters.Count; i++)
+        var size = 16;
+        for (var i = 0; i < batch.Count; i++)
         {
-            var parameter = request.Parameters[i];
-            var (type, value) = EncodeValue(parameter.Value, parameter.Name);
-            parameters[i] = new WireParameter(parameter.Name, type, value);
+            var request = batch[i];
+            size += 16 + request.CommandText.Length * 2;
+            for (var p = 0; p < request.Parameters.Count; p++)
+            {
+                size += 24 + request.Parameters[p].Value switch
+                {
+                    string text => text.Length * 2,
+                    byte[] blob => blob.Length,
+                    _ => 8,
+                };
+            }
         }
 
-        return new WireRequest(request.CommandText, EncodeResultKind(request.ResultKind), parameters);
+        return size;
     }
 
-    private static string EncodeResultKind(SqliteResultKind kind) => kind switch
+    private static byte EncodeResultKind(SqliteResultKind kind) => kind switch
     {
-        SqliteResultKind.NonQuery => "nonQuery",
-        SqliteResultKind.Scalar => "scalar",
-        SqliteResultKind.Reader => "reader",
+        SqliteResultKind.NonQuery => 0,
+        SqliteResultKind.Scalar => 1,
+        SqliteResultKind.Reader => 2,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown result kind."),
     };
 
+    private static void WriteValue(ref WireWriter writer, object? value, string parameterName)
+    {
+        var (type, normalized) = EncodeValue(value, parameterName);
+        writer.WriteByte((byte)type);
+
+        switch (type)
+        {
+            case TypeCode.Null:
+                break;
+
+            case TypeCode.Integer:
+                writer.WriteInt64((long)normalized!);
+                break;
+
+            case TypeCode.Real:
+                writer.WriteDouble((double)normalized!);
+                break;
+
+            case TypeCode.Text:
+                writer.WriteString((string)normalized!);
+                break;
+
+            case TypeCode.Blob:
+                writer.WriteBytes((ReadOnlyMemory<byte>)normalized!);
+                break;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(value), type, "Unknown wire type.");
+        }
+    }
+
     /// <summary>
-    /// Maps a parameter value onto a storage class and a JSON-safe representation.
+    /// Maps a parameter value onto a storage class and the single representation the wire carries
+    /// for it: <see cref="long"/>, <see cref="double"/>, <see cref="string"/>,
+    /// <see cref="ReadOnlyMemory{T}"/> of <see cref="byte"/>, or <see langword="null"/>.
     /// </summary>
     /// <remarks>
     /// Only conversions with one obvious answer are performed here. Dates, times, and GUIDs have more
@@ -100,7 +178,7 @@ public static class SqliteWireFormat
     /// saying so. <see cref="SqliteParameterBinding"/> converts them before a parameter reaches the
     /// transport.
     /// </remarks>
-    internal static (int Type, object? Value) EncodeValue(object? value, string parameterName)
+    public static (int Type, object? Value) EncodeValue(object? value, string parameterName)
     {
         switch (value)
         {
@@ -111,19 +189,28 @@ public static class SqliteWireFormat
             case bool flag:
                 return (TypeCode.Integer, flag ? 1L : 0L);
 
-            case byte or sbyte or short or ushort or int or uint or long:
-                return EncodeInteger(Convert.ToInt64(value, CultureInfo.InvariantCulture));
+            case long int64:
+                return (TypeCode.Integer, int64);
+
+            case int int32:
+                return (TypeCode.Integer, (long)int32);
+
+            case byte or sbyte or short or ushort or uint:
+                return (TypeCode.Integer, Convert.ToInt64(value, CultureInfo.InvariantCulture));
 
             case ulong unsigned when unsigned <= long.MaxValue:
-                return EncodeInteger((long)unsigned);
+                return (TypeCode.Integer, (long)unsigned);
 
             case ulong tooLarge:
                 throw new NotSupportedException(
                     $"Parameter '{parameterName}' is {tooLarge}, which exceeds the range of SQLite's "
                     + "64-bit signed INTEGER.");
 
-            case float or double:
-                return (TypeCode.Real, Convert.ToDouble(value, CultureInfo.InvariantCulture));
+            case double real:
+                return (TypeCode.Real, real);
+
+            case float single:
+                return (TypeCode.Real, (double)single);
 
             // Text, so that no precision is lost. Comparisons and arithmetic over these columns are
             // what the ef_* function set exists to make correct.
@@ -137,13 +224,16 @@ public static class SqliteWireFormat
                 return (TypeCode.Text, character.ToString());
 
             case byte[] blob:
-                return (TypeCode.Blob, Convert.ToBase64String(blob));
+                return (TypeCode.Blob, new ReadOnlyMemory<byte>(blob));
 
             case ReadOnlyMemory<byte> memory:
-                return (TypeCode.Blob, Convert.ToBase64String(memory.Span));
+                return (TypeCode.Blob, memory);
 
             case Memory<byte> memory:
-                return (TypeCode.Blob, Convert.ToBase64String(memory.Span));
+                return (TypeCode.Blob, (ReadOnlyMemory<byte>)memory);
+
+            case ArraySegment<byte> segment:
+                return (TypeCode.Blob, (ReadOnlyMemory<byte>)segment);
 
             default:
                 throw new NotSupportedException(
@@ -154,10 +244,124 @@ public static class SqliteWireFormat
         }
     }
 
-    private static (int Type, object? Value) EncodeInteger(long value)
-        => value is >= -MaxExactInteger and <= MaxExactInteger
-            ? (TypeCode.Integer, value)
-            : (TypeCode.Integer, value.ToString(CultureInfo.InvariantCulture));
+    // ---------------------------------------------------------------------------------------------
+    // Decoding a reply
+    // ---------------------------------------------------------------------------------------------
+
+    /// <summary>Decodes the worker's reply into results the ADO.NET layer can read.</summary>
+    /// <exception cref="BlazorSqliteException">The worker reported a failure.</exception>
+    /// <exception cref="FormatException">The reply did not match the wire format.</exception>
+    public static IReadOnlyList<SqliteCommandResult> DecodeReply(ReadOnlySpan<byte> reply)
+    {
+        var reader = new WireReader(reply);
+
+        var magic = reader.ReadByte();
+        if (magic != Magic)
+        {
+            throw new FormatException($"Not a BlazorSqlite wire message (leading byte 0x{magic:X2}).");
+        }
+
+        var version = reader.ReadByte();
+        if (version != Version)
+        {
+            throw new FormatException(
+                $"Unsupported wire version {version}; this build speaks version {Version}. "
+                + "The BlazorSqlite.Js static assets and the BlazorSqlite.Interop package must be the same release.");
+        }
+
+        var status = reader.ReadByte();
+        if (status == StatusError)
+        {
+            var message = reader.ReadString();
+            var code = reader.ReadInt32();
+            var name = reader.ReadString();
+            throw CreateException(message, code < 0 ? null : code, name);
+        }
+
+        if (status != StatusOk)
+        {
+            throw new FormatException($"Unknown reply status {status}.");
+        }
+
+        var count = checked((int)reader.ReadUInt32());
+        var results = new SqliteCommandResult[count];
+        for (var i = 0; i < count; i++)
+        {
+            results[i] = ReadResult(ref reader);
+        }
+
+        if (reader.Remaining != 0)
+        {
+            throw new FormatException($"The reply carries {reader.Remaining} unexpected trailing byte(s).");
+        }
+
+        return results;
+    }
+
+    private static SqliteCommandResult ReadResult(ref WireReader reader)
+    {
+        var columnCount = reader.ReadUInt16();
+        var columnNames = columnCount == 0 ? [] : new string[columnCount];
+        var columnTypes = columnCount == 0 ? [] : new string?[columnCount];
+
+        for (var c = 0; c < columnCount; c++)
+        {
+            columnNames[c] = reader.ReadString();
+            var storageClass = reader.ReadByte();
+            columnTypes[c] = storageClass is >= 1 and <= 4 ? StorageClassNames[storageClass] : null;
+        }
+
+        var recordsAffected = reader.ReadInt32();
+        var lastInsertRowId = reader.ReadInt64();
+        var rowCount = checked((int)reader.ReadUInt32());
+        var rows = rowCount == 0 ? [] : new object?[rowCount][];
+
+        for (var r = 0; r < rowCount; r++)
+        {
+            var cells = columnCount == 0 ? [] : new object?[columnCount];
+            for (var c = 0; c < columnCount; c++)
+            {
+                cells[c] = ReadValue(ref reader);
+            }
+
+            rows[r] = cells;
+        }
+
+        var changedCount = reader.ReadUInt16();
+        var changed = new HashSet<string>(changedCount, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < changedCount; i++)
+        {
+            changed.Add(reader.ReadString());
+        }
+
+        return new SqliteCommandResult
+        {
+            ColumnNames = columnNames,
+            ColumnTypes = columnTypes,
+            Rows = rows,
+            RecordsAffected = recordsAffected,
+            LastInsertRowId = lastInsertRowId,
+            ChangedTables = changed,
+        };
+    }
+
+    private static object? ReadValue(ref WireReader reader)
+    {
+        var type = reader.ReadByte();
+        return type switch
+        {
+            TypeCode.Null => null,
+            TypeCode.Integer => reader.ReadInt64(),
+            TypeCode.Real => reader.ReadDouble(),
+            TypeCode.Text => reader.ReadString(),
+            TypeCode.Blob => reader.ReadBytes(),
+            _ => throw new FormatException($"Unknown wire type tag {type}."),
+        };
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // The JSON envelope used by control requests (open, close, version)
+    // ---------------------------------------------------------------------------------------------
 
     /// <summary>
     /// Reads the envelope returned by the host's <c>call</c> method, which never throws across JS
@@ -202,164 +406,144 @@ public static class SqliteWireFormat
                 ? sqliteCode.GetInt32()
                 : null;
 
-        var textMessage = string.IsNullOrWhiteSpace(message)
-            ? "The SQLite worker reported a failure."
-            : message;
-
         var name = error.TryGetProperty("name", out var nameElement)
             && nameElement.ValueKind == JsonValueKind.String
                 ? nameElement.GetString()
                 : null;
 
-        if (code is 13 || string.Equals(name, "QuotaExceededError", StringComparison.Ordinal))
-        {
-            return new BlazorSqliteQuotaExceededException(textMessage, code ?? 13);
-        }
-
-        if (code is 11)
-        {
-            return new BlazorSqliteCorruptDatabaseException(textMessage, code);
-        }
-
-        if (code is 5 or 6)
-        {
-            return new BlazorSqliteConcurrencyException(textMessage, code);
-        }
-
-        return new BlazorSqliteException(textMessage, code);
+        return CreateException(message, code, name);
     }
 
-    /// <summary>Decodes the worker's reply into results the ADO.NET layer can read.</summary>
-    /// <exception cref="FormatException">The reply did not match the wire format.</exception>
-    public static IReadOnlyList<SqliteCommandResult> DecodeResults(JsonElement json)
+    /// <summary>
+    /// Builds the typed exception for a worker failure, so every path - binary reply, JSON envelope,
+    /// or a transport's own error - classifies result codes the same way.
+    /// </summary>
+    public static BlazorSqliteException CreateException(string? message, int? sqliteErrorCode, string? errorName)
     {
-        if (json.ValueKind != JsonValueKind.Array)
+        var text = string.IsNullOrWhiteSpace(message)
+            ? "The SQLite worker reported a failure."
+            : message;
+
+        if (sqliteErrorCode is 13 || string.Equals(errorName, "QuotaExceededError", StringComparison.Ordinal))
         {
-            throw new FormatException(
-                $"Expected an array of results from the worker but received {json.ValueKind}.");
+            return new BlazorSqliteQuotaExceededException(text, sqliteErrorCode ?? 13);
         }
 
-        var results = new List<SqliteCommandResult>(json.GetArrayLength());
-        foreach (var element in json.EnumerateArray())
+        return sqliteErrorCode switch
         {
-            results.Add(DecodeResult(element));
-        }
-
-        return results;
-    }
-
-    private static SqliteCommandResult DecodeResult(JsonElement element)
-    {
-        var columnNames = ReadStringArray(element, "columnNames");
-        var columnTypes = ReadNullableStringArray(element, "columnTypes");
-        var rows = ReadRows(element);
-
-        return new SqliteCommandResult
-        {
-            ColumnNames = columnNames,
-            ColumnTypes = columnTypes,
-            Rows = rows,
-            RecordsAffected = element.TryGetProperty("recordsAffected", out var affected)
-                ? affected.GetInt32()
-                : 0,
+            11 or 26 => new BlazorSqliteCorruptDatabaseException(text, sqliteErrorCode),
+            5 or 6 => new BlazorSqliteConcurrencyException(text, sqliteErrorCode),
+            19 => new BlazorSqliteConstraintException(text, sqliteErrorCode),
+            _ => new BlazorSqliteException(text, sqliteErrorCode),
         };
     }
 
-    private static object?[][] ReadRows(JsonElement element)
+    // ---------------------------------------------------------------------------------------------
+    // Primitives
+    // ---------------------------------------------------------------------------------------------
+
+    private ref struct WireWriter
     {
-        if (!element.TryGetProperty("rows", out var rows) || rows.ValueKind != JsonValueKind.Array)
+        private byte[] _buffer;
+        private int _length;
+
+        public WireWriter(int initialCapacity)
         {
-            return [];
+            _buffer = ArrayPool<byte>.Shared.Rent(Math.Max(initialCapacity, 256));
+            _length = 0;
         }
 
-        var decoded = new object?[rows.GetArrayLength()][];
-        var index = 0;
-
-        foreach (var row in rows.EnumerateArray())
+        private Span<byte> Reserve(int count)
         {
-            var types = row.GetProperty("t");
-            var values = row.GetProperty("v");
+            if (_length + count > _buffer.Length)
+            {
+                var grown = ArrayPool<byte>.Shared.Rent(Math.Max(_buffer.Length * 2, _length + count));
+                _buffer.AsSpan(0, _length).CopyTo(grown);
+                ArrayPool<byte>.Shared.Return(_buffer);
+                _buffer = grown;
+            }
 
-            if (types.GetArrayLength() != values.GetArrayLength())
+            var span = _buffer.AsSpan(_length, count);
+            _length += count;
+            return span;
+        }
+
+        public void WriteByte(byte value) => Reserve(1)[0] = value;
+
+        public void WriteUInt16(ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(Reserve(2), value);
+
+        public void WriteInt32(int value) => BinaryPrimitives.WriteInt32LittleEndian(Reserve(4), value);
+
+        public void WriteUInt32(uint value) => BinaryPrimitives.WriteUInt32LittleEndian(Reserve(4), value);
+
+        public void WriteInt64(long value) => BinaryPrimitives.WriteInt64LittleEndian(Reserve(8), value);
+
+        public void WriteDouble(double value) => BinaryPrimitives.WriteDoubleLittleEndian(Reserve(8), value);
+
+        public void WriteBytes(ReadOnlyMemory<byte> bytes)
+        {
+            WriteUInt32((uint)bytes.Length);
+            bytes.Span.CopyTo(Reserve(bytes.Length));
+        }
+
+        public void WriteString(string text)
+        {
+            var byteCount = Encoding.UTF8.GetByteCount(text);
+            WriteUInt32((uint)byteCount);
+            Encoding.UTF8.GetBytes(text, Reserve(byteCount));
+        }
+
+        public byte[] ToArray()
+        {
+            var result = _buffer.AsSpan(0, _length).ToArray();
+            ArrayPool<byte>.Shared.Return(_buffer);
+            _buffer = [];
+            return result;
+        }
+    }
+
+    private ref struct WireReader(ReadOnlySpan<byte> data)
+    {
+        private readonly ReadOnlySpan<byte> _data = data;
+        private int _position = 0;
+
+        public readonly int Remaining => _data.Length - _position;
+
+        private ReadOnlySpan<byte> Take(int count)
+        {
+            if (count < 0 || _position + count > _data.Length)
             {
                 throw new FormatException(
-                    $"Row {index} carries {types.GetArrayLength()} type tags for "
-                    + $"{values.GetArrayLength()} values.");
+                    $"Truncated wire message: needed {count} byte(s) at offset {_position} of {_data.Length}.");
             }
 
-            var cells = new object?[values.GetArrayLength()];
-            for (var i = 0; i < cells.Length; i++)
-            {
-                cells[i] = DecodeValue(types[i].GetInt32(), values[i]);
-            }
-
-            decoded[index++] = cells;
+            var span = _data.Slice(_position, count);
+            _position += count;
+            return span;
         }
 
-        return decoded;
-    }
+        public byte ReadByte() => Take(1)[0];
 
-    private static object? DecodeValue(int type, JsonElement value) => type switch
-    {
-        TypeCode.Null => null,
+        public ushort ReadUInt16() => BinaryPrimitives.ReadUInt16LittleEndian(Take(2));
 
-        // A large integer arrives as a decimal string, so both forms are accepted for INTEGER.
-        TypeCode.Integer => value.ValueKind switch
+        public int ReadInt32() => BinaryPrimitives.ReadInt32LittleEndian(Take(4));
+
+        public uint ReadUInt32() => BinaryPrimitives.ReadUInt32LittleEndian(Take(4));
+
+        public long ReadInt64() => BinaryPrimitives.ReadInt64LittleEndian(Take(8));
+
+        public double ReadDouble() => BinaryPrimitives.ReadDoubleLittleEndian(Take(8));
+
+        public byte[] ReadBytes()
         {
-            JsonValueKind.String => long.Parse(value.GetString()!, CultureInfo.InvariantCulture),
-            _ => value.GetInt64(),
-        },
-
-        TypeCode.Real => value.GetDouble(),
-        TypeCode.Text => value.GetString(),
-        TypeCode.Blob => value.GetBytesFromBase64(),
-
-        _ => throw new FormatException($"Unknown wire type tag {type}."),
-    };
-
-    private static string[] ReadStringArray(JsonElement element, string property)
-    {
-        if (!element.TryGetProperty(property, out var array) || array.ValueKind != JsonValueKind.Array)
-        {
-            return [];
+            var length = checked((int)ReadUInt32());
+            return Take(length).ToArray();
         }
 
-        var values = new string[array.GetArrayLength()];
-        var index = 0;
-        foreach (var item in array.EnumerateArray())
+        public string ReadString()
         {
-            values[index++] = item.GetString() ?? string.Empty;
+            var length = checked((int)ReadUInt32());
+            return length == 0 ? string.Empty : Encoding.UTF8.GetString(Take(length));
         }
-
-        return values;
-    }
-
-    private static string?[] ReadNullableStringArray(JsonElement element, string property)
-    {
-        if (!element.TryGetProperty(property, out var array) || array.ValueKind != JsonValueKind.Array)
-        {
-            return [];
-        }
-
-        var values = new string?[array.GetArrayLength()];
-        var index = 0;
-        foreach (var item in array.EnumerateArray())
-        {
-            values[index++] = item.ValueKind == JsonValueKind.Null ? null : item.GetString();
-        }
-
-        return values;
     }
 }
-
-/// <summary>One command on the wire.</summary>
-public sealed record WireRequest(
-    [property: JsonPropertyName("commandText")] string CommandText,
-    [property: JsonPropertyName("resultKind")] string ResultKind,
-    [property: JsonPropertyName("parameters")] WireParameter[] Parameters);
-
-/// <summary>One parameter on the wire, tagged with its SQLite storage class.</summary>
-public sealed record WireParameter(
-    [property: JsonPropertyName("name")] string Name,
-    [property: JsonPropertyName("type")] int Type,
-    [property: JsonPropertyName("value")] object? Value);

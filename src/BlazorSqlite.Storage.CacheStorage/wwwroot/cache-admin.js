@@ -11,6 +11,7 @@ import {
   fileNameOf,
   importBesqlIfPresent,
   metaUrl,
+  pageCount,
   pageUrl,
   pathOf,
 } from './cache-vfs.js';
@@ -93,10 +94,23 @@ export async function list() {
 export async function deleteDatabase(databaseName) {
   const name = requireName(databaseName);
   const cache = await caches.open(CACHE_NAME);
-  const prefix = `/blazor-sqlite/db/${encodeURIComponent(pathOf(name))}`;
-  await Promise.all((await cache.keys())
-    .filter(request => new URL(request.url).pathname.startsWith(prefix))
-    .map(request => cache.delete(request)));
+
+  for (const suffix of ['', ...RELATED_SUFFIXES]) {
+    const path = pathOf(name + suffix);
+    const meta = await cache.match(metaUrl(path));
+    if (!meta) {
+      continue;
+    }
+
+    const { size } = await meta.json();
+    const deletions = [];
+    for (let index = 0; index < pageCount(size ?? 0); index++) {
+      deletions.push(cache.delete(pageUrl(path, index)));
+    }
+
+    await Promise.all(deletions);
+    await cache.delete(metaUrl(path));
+  }
 
   try {
     const besql = await caches.open(BESQL_CACHE);
@@ -114,16 +128,19 @@ export async function exportDatabase(databaseName) {
   if (meta) {
     const { size } = await meta.json();
     const image = new Uint8Array(size ?? 0);
+    const reads = [];
     for (let offset = 0; offset < image.byteLength; offset += PAGE_SIZE) {
-      const page = await cache.match(pageUrl(path, offset / PAGE_SIZE));
-      if (!page) {
-        continue;
-      }
+      reads.push(cache.match(pageUrl(path, offset / PAGE_SIZE)).then(async page => {
+        if (!page) {
+          return;
+        }
 
-      const bytes = new Uint8Array(await page.arrayBuffer());
-      image.set(bytes.subarray(0, Math.min(PAGE_SIZE, image.byteLength - offset)), offset);
+        const bytes = new Uint8Array(await page.arrayBuffer());
+        image.set(bytes.subarray(0, Math.min(PAGE_SIZE, image.byteLength - offset)), offset);
+      }));
     }
 
+    await Promise.all(reads);
     return image;
   }
 
@@ -143,13 +160,16 @@ export async function importDatabase(databaseName, contents) {
 
   await deleteDatabase(name);
 
+  const writes = [];
   for (let offset = 0; offset < bytes.byteLength; offset += PAGE_SIZE) {
     const page = new Uint8Array(PAGE_SIZE);
     page.set(bytes.subarray(offset, offset + PAGE_SIZE));
-    await cache.put(pageUrl(path, offset / PAGE_SIZE), new Response(page, {
+    writes.push(cache.put(pageUrl(path, offset / PAGE_SIZE), new Response(page, {
       headers: { 'content-type': 'application/octet-stream' },
-    }));
+    })));
   }
+
+  await Promise.all(writes);
 
   await cache.put(metaUrl(path), new Response(JSON.stringify({ size: bytes.byteLength }), {
     headers: { 'content-type': 'application/json' },

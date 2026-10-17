@@ -17,7 +17,17 @@
     {
         Database.BeforeSessionReset += TearDownAsync;
         Database.AfterSessionReset += ReadyAsync;
-        await ReadyAsync();
+
+        // Opening raises AfterSessionReset, which runs ReadyAsync once for every subscriber; only
+        // an already-open database needs the explicit call.
+        if (Database.Database.IsOpen)
+        {
+            await ReadyAsync();
+        }
+        else
+        {
+            await Database.EnsureSessionAsync();
+        }
     }
 
     private async Task TearDownAsync()

@@ -1,9 +1,9 @@
 using BlazorSqlite.Samples.Data;
 using BlazorSqlite;
 using BlazorSqlite.Data;
+using BlazorSqlite.EntityFrameworkCore;
 using BlazorSqlite.Interop;
 using BlazorSqlite.Storage;
-using Microsoft.EntityFrameworkCore;
 
 namespace BlazorSqlite.Samples.Client;
 
@@ -17,75 +17,49 @@ public enum StorageSwitchMode
 }
 
 /// <summary>
-/// Opens one browser session and hands out contexts on that connection.
+/// The sample's view of the library's shared <see cref="BlazorSqliteDatabase"/>: hands out contexts
+/// and drives the storage-switching UI. Everything that is not UI plumbing lives in the library.
 /// </summary>
 public sealed class BrowserDatabase(
-    BlazorSqliteSessionFactory factory,
-    IReadOnlyList<IBlazorSqliteStorageProvider> providers,
-    IStorageBindingStore bindings) : IAsyncDisposable
+    BlazorSqliteDatabase database,
+    IBlazorSqliteDbContextFactory<AppDbContext> contexts,
+    IEnumerable<IBlazorSqliteStorageProvider> providers,
+    IStorageBindingStore bindings,
+    StorageMigrator migrator)
 {
     public const string DatabaseName = "app.db";
 
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly StorageMigrator _migrator = new();
-    private BlazorSqliteSession? _session;
-    private bool _migrated;
+    public BlazorSqliteDatabase Database { get; } = database;
 
-    public IReadOnlyList<IBlazorSqliteStorageProvider> Providers { get; } = providers;
+    public IReadOnlyList<IBlazorSqliteStorageProvider> Providers { get; } = [.. providers];
 
     public IStorageBindingStore Bindings { get; } = bindings;
 
-    public BlazorSqliteSession? Session => _session;
+    public BlazorSqliteSession? Session => Database.Session;
 
-    public StorageResolution? Resolution => _session?.Resolution;
+    public StorageResolution? Resolution => Database.Resolution;
 
-    public BlazorSqliteConnection? Connection => _session?.Connection;
+    public BlazorSqliteConnection? Connection => Database.Connection;
 
     /// <summary>Raised before the worker is torn down so pages can drop live queries and contexts.</summary>
-    public event Func<Task>? BeforeSessionReset;
-
-    /// <summary>Raised after a new backend is bound so pages can reopen.</summary>
-    public event Func<Task>? AfterSessionReset;
-
-    public async Task<BlazorSqliteSession> EnsureSessionAsync(
-        CancellationToken cancellationToken = default)
+    public event Func<Task>? BeforeSessionReset
     {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            _session ??= await factory.OpenAsync(DatabaseName, cancellationToken).ConfigureAwait(false);
-            return _session;
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        add => Database.Closing += value;
+        remove => Database.Closing -= value;
     }
 
-    public async Task<AppDbContext> OpenContextAsync(CancellationToken cancellationToken = default)
+    /// <summary>Raised after a session opens so pages can (re)load.</summary>
+    public event Func<Task>? AfterSessionReset
     {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            _session ??= await factory.OpenAsync(DatabaseName, cancellationToken).ConfigureAwait(false);
-            var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-                .UseBlazorSqlite(_session.Connection)
-                .Options);
-
-            if (!_migrated)
-            {
-                await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
-                await DemoData.SeedIfEmptyAsync(context, cancellationToken).ConfigureAwait(false);
-                _migrated = true;
-            }
-
-            return context;
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        add => Database.Opened += value;
+        remove => Database.Opened -= value;
     }
+
+    public async Task<BlazorSqliteSession> EnsureSessionAsync(CancellationToken cancellationToken = default)
+        => await Database.OpenAsync(cancellationToken);
+
+    public Task<AppDbContext> OpenContextAsync(CancellationToken cancellationToken = default)
+        => contexts.CreateDbContextAsync(cancellationToken);
 
     /// <summary>
     /// Moves or recreates <see cref="DatabaseName"/> on <paramref name="targetProviderName"/>.
@@ -101,122 +75,59 @@ public sealed class BrowserDatabase(
             string.Equals(p.Name, targetProviderName, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"No registered provider named '{targetProviderName}'.");
 
-        await RaiseAsync(BeforeSessionReset).ConfigureAwait(false);
+        var source = Resolution?.Provider ?? await ProviderFromBindingAsync(cancellationToken);
 
-        IBlazorSqliteStorageProvider? source;
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        await Database.WhileClosedAsync(async ct =>
         {
-            source = _session?.Resolution.Provider;
-            if (_session is not null)
+            if (mode is StorageSwitchMode.Migrate
+                && source is not null
+                && !string.Equals(source.Name, target.Name, StringComparison.OrdinalIgnoreCase)
+                && await source.Admin.ExistsAsync(DatabaseName, ct))
             {
-                await _session.DisposeAsync().ConfigureAwait(false);
-                _session = null;
+                await migrator.MigrateAsync(DatabaseName, source, target, Bindings, ct);
             }
+            else
+            {
+                await target.Admin.DeleteAsync(DatabaseName, ct);
+                await Bindings.SetProviderNameAsync(DatabaseName, target.Name, ct);
+            }
+        }, cancellationToken);
 
-            _migrated = false;
-        }
-        finally
-        {
-            _gate.Release();
-        }
-
-        source ??= await ProviderFromBindingAsync(cancellationToken).ConfigureAwait(false);
-
-        if (mode is StorageSwitchMode.Migrate
-            && source is not null
-            && !string.Equals(source.Name, target.Name, StringComparison.OrdinalIgnoreCase)
-            && await source.Admin.ExistsAsync(DatabaseName, cancellationToken).ConfigureAwait(false))
-        {
-            await _migrator
-                .MigrateAsync(DatabaseName, source, target, Bindings, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        else
-        {
-            await target.Admin.DeleteAsync(DatabaseName, cancellationToken).ConfigureAwait(false);
-            await Bindings.SetProviderNameAsync(DatabaseName, target.Name, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        await RaiseAsync(AfterSessionReset).ConfigureAwait(false);
+        await Database.OpenAsync(cancellationToken);
     }
 
     /// <summary>
     /// Tears the worker down so admin import/delete can replace the file without racing an open
     /// connection. The next <see cref="OpenContextAsync"/> opens a fresh session.
     /// </summary>
-    public async Task CloseSessionAsync()
-    {
-        await _gate.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            if (_session is not null)
-            {
-                await _session.DisposeAsync().ConfigureAwait(false);
-                _session = null;
-            }
-
-            _migrated = false;
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
-    /// <summary>Tells pages the session they hold is gone and they should reopen.</summary>
-    public Task NotifySessionChangedAsync() => RaiseAsync(AfterSessionReset);
+    public Task CloseSessionAsync() => Database.CloseAsync();
 
     public async Task<object?> ExecuteScalarAsync(
         string sql,
         CancellationToken cancellationToken = default)
     {
-        var session = await EnsureSessionAsync(cancellationToken).ConfigureAwait(false);
+        var session = await EnsureSessionAsync(cancellationToken);
         await using var command = session.Connection.CreateCommand();
         command.CommandText = sql;
-        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        return await command.ExecuteScalarAsync(cancellationToken);
     }
 
     public async Task ExecuteNonQueryAsync(
         string sql,
         CancellationToken cancellationToken = default)
     {
-        var session = await EnsureSessionAsync(cancellationToken).ConfigureAwait(false);
+        var session = await EnsureSessionAsync(cancellationToken);
         await using var command = session.Connection.CreateCommand();
         command.CommandText = sql;
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_session is not null)
-        {
-            await _session.DisposeAsync().ConfigureAwait(false);
-        }
-
-        _gate.Dispose();
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task<IBlazorSqliteStorageProvider?> ProviderFromBindingAsync(
         CancellationToken cancellationToken)
     {
-        var name = await Bindings.GetProviderNameAsync(DatabaseName, cancellationToken).ConfigureAwait(false);
+        var name = await Bindings.GetProviderNameAsync(DatabaseName, cancellationToken);
         return name is null
             ? null
             : Providers.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static async Task RaiseAsync(Func<Task>? handlers)
-    {
-        if (handlers is null)
-        {
-            return;
-        }
-
-        foreach (var handler in handlers.GetInvocationList().Cast<Func<Task>>())
-        {
-            await handler().ConfigureAwait(false);
-        }
     }
 }

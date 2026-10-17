@@ -1,0 +1,16 @@
+# Limits
+
+What the browser cannot do, and how the library tells you.
+
+| Limit | Behaviour |
+|---|---|
+| Synchronous ADO.NET and EF members (`Open`, `ExecuteReader`, `SaveChanges`, `ToList`, `EnsureCreated`) | Throw `BlazorSqliteSynchronousApiNotSupportedException` naming the async overload. The worker cannot be waited on from the main thread. |
+| `PRAGMA journal_mode = WAL` | Rejected on every backend. No web VFS provides the shared memory WAL needs. Journal mode is `DELETE` or `TRUNCATE`. |
+| `ATTACH` | Rejected when the backend declares `SupportsMultiDatabaseTransactions = false` (OPFS). Open each database on its own session. |
+| `PRAGMA page_size = …` | Rejected when the backend declares `CanChangePageSize = false` (IndexedDB, Cache Storage). |
+| Command timeout and `Cancel()` | Accepted, not enforced. A cancellation token stops the caller waiting; the statement runs to completion in the worker. |
+| Declared column types from `GetDataTypeName` | The engine is built with `SQLITE_OMIT_DECLTYPE`; the worker reports the storage class of the first row (`INTEGER`, `TEXT`, …). EF Core is unaffected. |
+| `EnsureDeletedAsync` | Drops every view and table and runs `VACUUM`; it cannot unlink the file while the session holds it. Use `BlazorSqliteDatabase.WhileClosedAsync` with `provider.Admin.DeleteAsync` to wipe storage. |
+| Firefox and Safari | Supported through the Asyncify build for async backends; OPFS synchronous access handles need a recent version. Not in the default CI matrix because Playwright's browser CDN is unreachable in some regions; set `BLAZORSQLITE_BROWSERS=all`. |
+
+Guards run on both sides: the .NET command layer rejects the statement before it leaves, and the worker rejects it again so a JavaScript caller cannot bypass the capability declaration.

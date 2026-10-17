@@ -115,6 +115,10 @@
         try
         {
             await using var context = await Database.OpenContextAsync();
+
+            // SaveChanges with nothing tracked never touches the database; a real insert is what
+            // reaches the synchronous ADO.NET surface and gets refused.
+            context.Categories.Add(new Category { Name = $"Sync {DateTime.UtcNow:HH:mm:ss}" });
             context.SaveChanges();
             _syncResult = "Unexpected: SaveChanges() succeeded.";
         }

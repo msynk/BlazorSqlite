@@ -15,10 +15,11 @@ namespace BlazorSqlite.EntityFrameworkCore;
 /// executor) is already async, so overriding the four abstract members is enough.
 /// </para>
 /// <para>
-/// <c>Delete</c> drops user tables rather than asking the storage provider to forget the file.
-/// The transport keeps the database open across EF's per-operation close, so there is no file to
-/// unlink; the admin API is what a future <c>EnsureDeleted</c> that must wipe persistent storage
-/// will call.
+/// <c>Delete</c> empties the schema - views, then tables with foreign keys off, then
+/// <c>VACUUM</c> - rather than asking the storage provider to forget the file. The transport keeps
+/// the database open across EF's per-operation close, so there is no file to unlink while a
+/// session holds it; <c>BlazorSqliteDatabase.WhileClosedAsync</c> plus the provider's admin API is
+/// the way to wipe persistent storage outright.
 /// </para>
 /// </remarks>
 public sealed class BlazorSqliteDatabaseCreator(
@@ -27,7 +28,7 @@ public sealed class BlazorSqliteDatabaseCreator(
     : RelationalDatabaseCreator(dependencies)
 {
     // EF's own version omits the NOT LIKE clause, because its Delete() removes the database file
-    // outright and so never has to reason about leftovers. Deletion here drops tables instead, and
+    // outright and so never has to reason about leftovers. Deletion here drops objects instead, and
     // SQLite's internal bookkeeping tables (sqlite_sequence, created by AUTOINCREMENT) cannot be
     // dropped - counting them would make an emptied database look populated.
     private const string CountTablesSql = """
@@ -35,8 +36,12 @@ public sealed class BlazorSqliteDatabaseCreator(
         WHERE "type" = 'table' AND "rootpage" IS NOT NULL AND "name" NOT LIKE 'sqlite_%'
         """;
 
-    private const string ListTablesSql = """
-        SELECT "name" FROM "sqlite_master" WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite_%'
+    // Views first: they may reference tables, and listing them in one pass keeps the drop order
+    // explicit. Triggers and indexes go with their tables.
+    private const string ListObjectsSql = """
+        SELECT "type", "name" FROM "sqlite_master"
+        WHERE "type" IN ('view', 'table') AND "name" NOT LIKE 'sqlite_%'
+        ORDER BY CASE "type" WHEN 'view' THEN 0 ELSE 1 END, "name"
         """;
 
     /// <summary>
@@ -74,19 +79,19 @@ public sealed class BlazorSqliteDatabaseCreator(
 
     public override async Task DeleteAsync(CancellationToken cancellationToken = default)
     {
-        var tables = new List<string>();
+        var objects = new List<(string Type, string Name)>();
 
         await Dependencies.Connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var command = rawSqlCommandBuilder.Build(ListTablesSql);
+            var command = rawSqlCommandBuilder.Build(ListObjectsSql);
             await using var reader = await command
                 .ExecuteReaderAsync(CreateParameterObject(), cancellationToken)
                 .ConfigureAwait(false);
 
             while (await reader.DbDataReader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                tables.Add(reader.DbDataReader.GetString(0));
+                objects.Add((reader.DbDataReader.GetString(0), reader.DbDataReader.GetString(1)));
             }
         }
         finally
@@ -94,11 +99,29 @@ public sealed class BlazorSqliteDatabaseCreator(
             await Dependencies.Connection.CloseAsync().ConfigureAwait(false);
         }
 
-        foreach (var table in tables)
+        if (objects.Count == 0)
         {
-            await ExecuteNonQueryAsync($"DROP TABLE IF EXISTS \"{table}\"", cancellationToken)
-                .ConfigureAwait(false);
+            return;
         }
+
+        // Foreign keys off so drop order among tables does not matter; back on afterwards because
+        // the connection outlives this call. VACUUM returns the freed pages to the storage backend.
+        await ExecuteNonQueryAsync("PRAGMA foreign_keys = OFF", cancellationToken).ConfigureAwait(false);
+        try
+        {
+            foreach (var (type, name) in objects)
+            {
+                var keyword = type == "view" ? "VIEW" : "TABLE";
+                await ExecuteNonQueryAsync($"DROP {keyword} IF EXISTS \"{name.Replace("\"", "\"\"", StringComparison.Ordinal)}\"", cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            await ExecuteNonQueryAsync("PRAGMA foreign_keys = ON", cancellationToken).ConfigureAwait(false);
+        }
+
+        await ExecuteNonQueryAsync("VACUUM", cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<object?> ExecuteScalarAsync(string sql, CancellationToken cancellationToken)

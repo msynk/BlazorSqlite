@@ -8,7 +8,7 @@ inspect the SQL EF generates.
 BlazorSqlite.Samples.Domain     entities (catalog, customers, orders)
 BlazorSqlite.Samples.Data       DbContext + IEntityTypeConfiguration<T> + migrations + demo seed
 BlazorSqlite.Samples.Server     stock UseSqlite("Data Source=app.db") + hosts the WASM client
-BlazorSqlite.Samples.Client     Blazor WASM, BlazorSqliteSessionFactory + UseBlazorSqlite(session.Connection)
+BlazorSqlite.Samples.Client     Blazor WASM, AddBlazorSqlite(...) + AddBlazorSqliteDbContext<AppDbContext>()
 ```
 
 ```

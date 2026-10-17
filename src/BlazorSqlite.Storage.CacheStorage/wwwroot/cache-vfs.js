@@ -1,9 +1,14 @@
 // Block-based Cache Storage VFS. Commits rely on SQLite's journal - the Cache API has no
 // multi-entry atomic write, so we do not claim SQLITE_IOCAP_BATCH_ATOMIC.
 //
-// Pages are 4096-byte cache entries. Dirty pages flush on xSync. Cross-tab writers are
-// coordinated by WebLocksMixin. A database that exists only in besql's `bit-Besql` cache is
+// Pages are 4096-byte cache entries. Dirty pages flush on xSync, in parallel. Cross-tab writers
+// are coordinated by WebLocksMixin. A database that exists only in besql's `bit-Besql` cache is
 // imported losslessly on first open and then served from our own layout.
+//
+// Every operation is addressed by page index computed from the file's recorded size, never by
+// enumerating the cache's keys: `cache.keys()` walks every entry of every database in the origin,
+// and a DELETE-journal commit deletes the journal file on each transaction, so a key scan there
+// would make commit cost grow with the size of all databases combined.
 
 import { FacadeVFS } from '/_content/BlazorSqlite.Js/engine/FacadeVFS.js';
 import * as VFS from '/_content/BlazorSqlite.Js/engine/VFS.js';
@@ -153,15 +158,16 @@ export class CacheStorageVFS extends WebLocksMixin(FacadeVFS) {
 
   async jTruncate(fileId, size) {
     const file = this.mapIdToFile.get(fileId);
+    const previousPages = pageCount(file.size);
     file.size = size;
-    const firstDropped = Math.ceil(size / PAGE_SIZE);
+    const firstDropped = pageCount(size);
     for (const index of [...file.dirty.keys()]) {
       if (index >= firstDropped) {
         file.dirty.delete(index);
       }
     }
 
-    await this.#dropPagesFrom(file.path, firstDropped);
+    await this.#dropPagesFrom(file.path, firstDropped, previousPages);
     await this.#writeSize(file.path, size);
     return VFS.SQLITE_OK;
   }
@@ -181,11 +187,16 @@ export class CacheStorageVFS extends WebLocksMixin(FacadeVFS) {
   }
 
   async #flush(file) {
-    for (const [index, page] of file.dirty) {
-      await this.#cache.put(pageUrl(file.path, index), bytesResponse(page));
+    if (file.dirty.size > 0) {
+      const writes = [];
+      for (const [index, page] of file.dirty) {
+        writes.push(this.#cache.put(pageUrl(file.path, index), bytesResponse(page)));
+      }
+
+      file.dirty.clear();
+      await Promise.all(writes);
     }
 
-    file.dirty.clear();
     await this.#writeSize(file.path, file.size);
   }
 
@@ -219,39 +230,48 @@ export class CacheStorageVFS extends WebLocksMixin(FacadeVFS) {
 
   async #writeImage(path, bytes) {
     await this.#deletePath(path);
+    const writes = [];
     for (let offset = 0; offset < bytes.byteLength; offset += PAGE_SIZE) {
       const page = new Uint8Array(PAGE_SIZE);
       page.set(bytes.subarray(offset, offset + PAGE_SIZE));
-      await this.#cache.put(pageUrl(path, offset / PAGE_SIZE), bytesResponse(page));
+      writes.push(this.#cache.put(pageUrl(path, offset / PAGE_SIZE), bytesResponse(page)));
     }
 
+    await Promise.all(writes);
     await this.#writeSize(path, bytes.byteLength);
   }
 
   async #deletePath(path) {
-    const keys = await this.#cache.keys();
-    const prefix = `/blazor-sqlite/db/${encodeURIComponent(path)}`;
-    await Promise.all(keys
-      .filter(request => new URL(request.url).pathname.startsWith(prefix))
-      .map(request => this.#cache.delete(request)));
+    const size = await this.#readSize(path);
+    if (size === null) {
+      return;
+    }
+
+    await this.#dropPagesFrom(path, 0, pageCount(size));
+    await this.#cache.delete(metaUrl(path));
   }
 
-  async #dropPagesFrom(path, firstDropped) {
-    const keys = await this.#cache.keys();
-    await Promise.all(keys
-      .filter(request => {
-        const url = new URL(request.url);
-        const match = url.pathname.match(/\/p\/(\d+)$/);
-        return url.pathname.includes(`/db/${encodeURIComponent(path)}/`)
-          && match
-          && Number(match[1]) >= firstDropped;
-      })
-      .map(request => this.#cache.delete(request)));
+  /**
+   * Deletes pages [firstDropped, count) by index. The recorded size bounds the walk, so no key
+   * enumeration is needed; a page that was never written is simply absent.
+   */
+  async #dropPagesFrom(path, firstDropped, count) {
+    const deletions = [];
+    for (let index = firstDropped; index < count; index++) {
+      deletions.push(this.#cache.delete(pageUrl(path, index)));
+    }
+
+    await Promise.all(deletions);
   }
 }
 
 export function pathOf(databaseName) {
   return new URL(databaseName, 'file://').pathname;
+}
+
+/** Pages a file of `size` bytes occupies. */
+export function pageCount(size) {
+  return Math.ceil(size / PAGE_SIZE);
 }
 
 export function fileNameOf(path) {

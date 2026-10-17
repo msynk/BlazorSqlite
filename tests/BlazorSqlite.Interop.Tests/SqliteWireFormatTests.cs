@@ -1,4 +1,5 @@
-using System.Globalization;
+using System.Buffers.Binary;
+using System.Text;
 using System.Text.Json;
 using BlazorSqlite.Data;
 using BlazorSqlite.Interop;
@@ -8,85 +9,87 @@ namespace BlazorSqlite.Interop.Tests;
 
 /// <summary>
 /// The wire format is the only thing standing between a 64-bit key and a silently rounded one, so
-/// every storage class and both integer widths are pinned here rather than left to a browser test
-/// that would also be testing the engine.
+/// every storage class and the exact byte layout are pinned here rather than left to a browser test
+/// that would also be testing the engine. <see cref="ReplyBuilder"/> writes replies the way
+/// <c>blazor-sqlite-wire.js</c> does; a layout change must be made in both places.
 /// </summary>
 public sealed class SqliteWireFormatTests
 {
     [Fact]
-    public void EncodeBatch_WritesTheShapeTheWorkerBinds()
+    public void EncodeBatch_WritesTheLayoutTheWorkerReads()
     {
-        var json = Serialize(SqliteWireFormat.EncodeBatch(
+        var bytes = SqliteWireFormat.EncodeBatch(
         [
             new SqliteCommandRequest
             {
                 CommandText = "INSERT INTO t (n) VALUES (@n)",
-                ResultKind = SqliteResultKind.NonQuery,
+                ResultKind = SqliteResultKind.Reader,
+                RowLimit = 5,
                 Parameters = [new SqliteParameterValue("@n", 7)],
             },
-        ]));
+        ]);
 
-        Assert.Equal("INSERT INTO t (n) VALUES (@n)", json[0].GetProperty("commandText").GetString());
-        Assert.Equal("nonQuery", json[0].GetProperty("resultKind").GetString());
-        Assert.Equal("@n", json[0].GetProperty("parameters")[0].GetProperty("name").GetString());
-        Assert.Equal(SqliteWireFormat.TypeCode.Integer, json[0].GetProperty("parameters")[0].GetProperty("type").GetInt32());
-        Assert.Equal(7, json[0].GetProperty("parameters")[0].GetProperty("value").GetInt64());
+        var reader = new SpanReader(bytes);
+        Assert.Equal(SqliteWireFormat.Magic, reader.Byte());
+        Assert.Equal(SqliteWireFormat.Version, reader.Byte());
+        Assert.Equal(1u, reader.UInt32());
+        Assert.Equal("INSERT INTO t (n) VALUES (@n)", reader.String());
+        Assert.Equal(2, reader.Byte());                 // reader
+        Assert.Equal(5, reader.Int32());                // row limit
+        Assert.Equal(1, reader.UInt16());               // parameter count
+        Assert.Equal("@n", reader.String());
+        Assert.Equal(SqliteWireFormat.TypeCode.Integer, reader.Byte());
+        Assert.Equal(7L, reader.Int64());
+        Assert.Equal(0, reader.Remaining);
+    }
+
+    [Fact]
+    public void EncodeBatch_WritesMinusOne_WhenThereIsNoRowLimit()
+    {
+        var bytes = SqliteWireFormat.EncodeBatch([new SqliteCommandRequest { CommandText = "SELECT 1" }]);
+
+        var reader = new SpanReader(bytes);
+        reader.Skip(6);
+        reader.String();
+        Assert.Equal(0, reader.Byte());
+        Assert.Equal(-1, reader.Int32());
     }
 
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(-1)]
-    [InlineData(9007199254740991)]
-    [InlineData(-9007199254740991)]
-    public void IntegersInsideTheSafeRange_TravelAsJsonNumbers(long value)
-    {
-        var (_, encoded) = SqliteWireFormat.EncodeValue(value, "p");
-
-        Assert.Equal(value, encoded);
-        Assert.IsType<long>(encoded);
-    }
-
-    [Theory]
-    [InlineData(9007199254740992)]
-    [InlineData(-9007199254740992)]
+    [InlineData(9007199254740993)]
     [InlineData(long.MaxValue)]
     [InlineData(long.MinValue)]
-    public void IntegersOutsideTheSafeRange_TravelAsDecimalStrings(long value)
+    public void Integers_TravelAsEightBytes_WhateverTheirMagnitude(long value)
     {
         var (type, encoded) = SqliteWireFormat.EncodeValue(value, "p");
 
         Assert.Equal(SqliteWireFormat.TypeCode.Integer, type);
-        Assert.Equal(value.ToString(CultureInfo.InvariantCulture), encoded);
+        Assert.Equal(value, Assert.IsType<long>(encoded));
+
+        var bytes = SqliteWireFormat.EncodeBatch(
+            [new SqliteCommandRequest { CommandText = "x", Parameters = [new SqliteParameterValue("p", value)] }]);
+        Assert.Equal(value, BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(bytes.Length - 8)));
     }
 
     [Fact]
-    public void Decode_RestoresALargeIntegerFromItsDecimalString()
+    public void Decode_RestoresALargeInteger_Exactly()
     {
-        var results = SqliteWireFormat.DecodeResults(Parse(
-            """
-            [{
-              "columnNames": ["v"],
-              "columnTypes": ["INTEGER"],
-              "recordsAffected": 0,
-              "rows": [{ "t": [1], "v": ["9223372036854775807"] }]
-            }]
-            """));
+        var reply = new ReplyBuilder()
+            .Result(["v"], [SqliteWireFormat.TypeCode.Integer])
+            .Row(long.MaxValue)
+            .End()
+            .Build();
+
+        var results = SqliteWireFormat.DecodeReply(reply);
 
         Assert.Equal(long.MaxValue, Assert.Single(Assert.Single(Assert.Single(results).Rows)));
     }
 
     [Fact]
-    public void Decode_AcceptsASafeIntegerAsAJsonNumber()
-    {
-        var results = SqliteWireFormat.DecodeResults(Parse(
-            """[{ "columnNames": ["v"], "columnTypes": ["INTEGER"], "rows": [{ "t": [1], "v": [42] }] }]"""));
-
-        Assert.Equal(42L, Assert.Single(Assert.Single(Assert.Single(results).Rows)));
-    }
-
-    [Fact]
-    public void Blob_RoundTripsThroughBase64()
+    public void Blob_RoundTripsAsRawBytes()
     {
         byte[] blob = [0, 1, 250, 255];
         var encoded = SqliteWireFormat.EncodeBatch(
@@ -98,19 +101,68 @@ public sealed class SqliteWireFormatTests
             },
         ]);
 
-        Assert.Equal(SqliteWireFormat.TypeCode.Blob, encoded[0].Parameters[0].Type);
-        Assert.Equal(Convert.ToBase64String(blob), encoded[0].Parameters[0].Value);
+        // The last nine bytes are the blob tag, its length, and the bytes themselves.
+        Assert.Equal(SqliteWireFormat.TypeCode.Blob, encoded[^9]);
+        Assert.Equal(4u, BinaryPrimitives.ReadUInt32LittleEndian(encoded.AsSpan(encoded.Length - 8)));
+        Assert.Equal(blob, encoded[^4..]);
 
-        var results = SqliteWireFormat.DecodeResults(Parse(
-            $$"""
-            [{
-              "columnNames": ["b"],
-              "columnTypes": ["BLOB"],
-              "rows": [{ "t": [4], "v": ["{{Convert.ToBase64String(blob)}}"] }]
-            }]
-            """));
+        var results = SqliteWireFormat.DecodeReply(new ReplyBuilder()
+            .Result(["b"], [SqliteWireFormat.TypeCode.Blob])
+            .Row(blob)
+            .End()
+            .Build());
 
         Assert.Equal(blob, Assert.Single(Assert.Single(Assert.Single(results).Rows)));
+    }
+
+    [Fact]
+    public void EveryStorageClass_DecodesToItsClrType()
+    {
+        var results = SqliteWireFormat.DecodeReply(new ReplyBuilder()
+            .Result(
+                ["i", "r", "t", "b", "n"],
+                [SqliteWireFormat.TypeCode.Integer, SqliteWireFormat.TypeCode.Real, SqliteWireFormat.TypeCode.Text, SqliteWireFormat.TypeCode.Blob, 0])
+            .Row(42L, 1.5d, "héllo wörld", new byte[] { 9 }, null)
+            .End()
+            .Build());
+
+        var result = Assert.Single(results);
+        var row = Assert.Single(result.Rows);
+        Assert.Equal(["INTEGER", "REAL", "TEXT", "BLOB", null], result.ColumnTypes);
+        Assert.Equal(42L, row[0]);
+        Assert.Equal(1.5d, row[1]);
+        Assert.Equal("héllo wörld", row[2]);
+        Assert.Equal(new byte[] { 9 }, row[3]);
+        Assert.Null(row[4]);
+    }
+
+    [Fact]
+    public void Decode_CarriesCountersAndChangedTables()
+    {
+        var results = SqliteWireFormat.DecodeReply(new ReplyBuilder()
+            .Result([], [], recordsAffected: 3, lastInsertRowId: 77)
+            .End("Products", "Orders")
+            .Build());
+
+        var result = Assert.Single(results);
+        Assert.Equal(3, result.RecordsAffected);
+        Assert.Equal(77L, result.LastInsertRowId);
+        Assert.NotNull(result.ChangedTables);
+        Assert.True(result.ChangedTables.SetEquals(["products", "ORDERS"]));
+    }
+
+    [Fact]
+    public void Decode_ReturnsOneResultPerRequest_InOrder()
+    {
+        var results = SqliteWireFormat.DecodeReply(new ReplyBuilder()
+            .Result([], [], recordsAffected: 1).End()
+            .Result(["n"], [SqliteWireFormat.TypeCode.Text]).Row("First").Row("Second").End()
+            .Build());
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal(1, results[0].RecordsAffected);
+        Assert.Equal(2, results[1].Rows.Count);
+        Assert.Equal("Second", results[1].Rows[1][0]);
     }
 
     [Fact]
@@ -148,6 +200,71 @@ public sealed class SqliteWireFormatTests
     }
 
     [Fact]
+    public void DecodeReply_ThrowsBlazorSqliteException_CarryingTheResultCode()
+    {
+        var error = Assert.Throws<BlazorSqliteConstraintException>(
+            () => SqliteWireFormat.DecodeReply(ReplyBuilder.Error("UNIQUE constraint failed", 19, "SQLiteError")));
+
+        Assert.Equal("UNIQUE constraint failed", error.Message);
+        Assert.Equal(19, error.SqliteErrorCode);
+    }
+
+    [Fact]
+    public void DecodeReply_ThrowsWithoutACode_WhenTheFailureIsTheTransports()
+    {
+        var error = Assert.Throws<BlazorSqliteException>(
+            () => SqliteWireFormat.DecodeReply(ReplyBuilder.Error("No database is open in this worker.", -1, "Error")));
+
+        Assert.Null(error.SqliteErrorCode);
+    }
+
+    [Theory]
+    [InlineData(5, typeof(BlazorSqliteConcurrencyException))]
+    [InlineData(6, typeof(BlazorSqliteConcurrencyException))]
+    [InlineData(11, typeof(BlazorSqliteCorruptDatabaseException))]
+    [InlineData(13, typeof(BlazorSqliteQuotaExceededException))]
+    [InlineData(19, typeof(BlazorSqliteConstraintException))]
+    [InlineData(1, typeof(BlazorSqliteException))]
+    public void ResultCodes_MapToTypedExceptions(int code, Type expected)
+    {
+        var error = SqliteWireFormat.CreateException("x", code, null);
+
+        Assert.IsType(expected, error, exactMatch: true);
+        Assert.Equal(code, error.SqliteErrorCode);
+    }
+
+    [Fact]
+    public void AQuotaExceededError_IsRecognisedByName_WhenTheBrowserThrewIt()
+    {
+        var error = SqliteWireFormat.CreateException("The quota has been exceeded.", null, "QuotaExceededError");
+
+        Assert.IsType<BlazorSqliteQuotaExceededException>(error);
+    }
+
+    [Fact]
+    public void DecodeReply_RejectsTheWrongMagic()
+    {
+        Assert.Throws<FormatException>(() => SqliteWireFormat.DecodeReply([0x00, 0x01, 0x00]));
+    }
+
+    [Fact]
+    public void DecodeReply_RejectsAnotherVersion_NamingTheMismatch()
+    {
+        var error = Assert.Throws<FormatException>(
+            () => SqliteWireFormat.DecodeReply([SqliteWireFormat.Magic, (byte)(SqliteWireFormat.Version + 1), 0]));
+
+        Assert.Contains("BlazorSqlite.Js", error.Message);
+    }
+
+    [Fact]
+    public void DecodeReply_RejectsATruncatedMessage()
+    {
+        var whole = new ReplyBuilder().Result(["v"], [SqliteWireFormat.TypeCode.Text]).Row("abc").End().Build();
+
+        Assert.Throws<FormatException>(() => SqliteWireFormat.DecodeReply(whole.AsSpan(0, whole.Length - 2)));
+    }
+
+    [Fact]
     public void DecodeCall_ReturnsTheResult_WhenTheWorkerSucceeded()
     {
         var result = SqliteWireFormat.DecodeCall(Parse("""{ "ok": true, "result": [1, 2] }"""));
@@ -158,7 +275,7 @@ public sealed class SqliteWireFormatTests
     [Fact]
     public void DecodeCall_ThrowsBlazorSqliteException_CarryingTheResultCode()
     {
-        var error = Assert.Throws<BlazorSqliteException>(
+        var error = Assert.Throws<BlazorSqliteConstraintException>(
             () => SqliteWireFormat.DecodeCall(Parse(
                 """{ "ok": false, "error": { "message": "UNIQUE constraint failed", "sqliteCode": 19 } }""")));
 
@@ -167,38 +284,180 @@ public sealed class SqliteWireFormatTests
     }
 
     [Fact]
-    public void DecodeCall_ThrowsWithoutACode_WhenTheFailureIsTheTransports()
-    {
-        var error = Assert.Throws<BlazorSqliteException>(
-            () => SqliteWireFormat.DecodeCall(Parse(
-                """{ "ok": false, "error": { "message": "No database is open in this worker.", "sqliteCode": null } }""")));
-
-        Assert.Null(error.SqliteErrorCode);
-    }
-
-    [Fact]
     public void DecodeCall_RejectsABareArray_SoAMissingEnvelopeCannotBeMistakenForSuccess()
     {
         Assert.Throws<FormatException>(() => SqliteWireFormat.DecodeCall(Parse("[1]")));
-    }
-
-    [Fact]
-    public void DecodeResults_RejectsARowWhoseTypesAndValuesDisagree()
-    {
-        Assert.Throws<FormatException>(
-            () => SqliteWireFormat.DecodeResults(Parse(
-                """[{ "rows": [{ "t": [1, 3], "v": [1] }] }]""")));
-    }
-
-    private static JsonElement Serialize<T>(T value)
-    {
-        using var document = JsonDocument.Parse(JsonSerializer.Serialize(value));
-        return document.RootElement.Clone();
     }
 
     private static JsonElement Parse(string json)
     {
         using var document = JsonDocument.Parse(json);
         return document.RootElement.Clone();
+    }
+
+    /// <summary>Walks a batch the way the worker's `BinaryReader` does.</summary>
+    private ref struct SpanReader(ReadOnlySpan<byte> data)
+    {
+        private readonly ReadOnlySpan<byte> _data = data;
+        private int _offset = 0;
+
+        public readonly int Remaining => _data.Length - _offset;
+
+        public void Skip(int count) => _offset += count;
+
+        public byte Byte() => _data[_offset++];
+
+        public ushort UInt16()
+        {
+            var value = BinaryPrimitives.ReadUInt16LittleEndian(_data[_offset..]);
+            _offset += 2;
+            return value;
+        }
+
+        public int Int32()
+        {
+            var value = BinaryPrimitives.ReadInt32LittleEndian(_data[_offset..]);
+            _offset += 4;
+            return value;
+        }
+
+        public uint UInt32()
+        {
+            var value = BinaryPrimitives.ReadUInt32LittleEndian(_data[_offset..]);
+            _offset += 4;
+            return value;
+        }
+
+        public long Int64()
+        {
+            var value = BinaryPrimitives.ReadInt64LittleEndian(_data[_offset..]);
+            _offset += 8;
+            return value;
+        }
+
+        public string String()
+        {
+            var length = (int)UInt32();
+            var value = Encoding.UTF8.GetString(_data.Slice(_offset, length));
+            _offset += length;
+            return value;
+        }
+    }
+}
+
+/// <summary>Writes replies exactly as <c>blazor-sqlite-wire.js</c> does, so the decoder is tested against the real layout.</summary>
+internal sealed class ReplyBuilder
+{
+    private readonly MemoryStream _stream = new();
+    private readonly BinaryWriter _writer;
+    private int _resultCount;
+    private long _rowCountPosition;
+    private int _rowCount;
+
+    public ReplyBuilder()
+    {
+        _writer = new BinaryWriter(_stream, Encoding.UTF8, leaveOpen: true);
+        _writer.Write(SqliteWireFormat.Magic);
+        _writer.Write(SqliteWireFormat.Version);
+        _writer.Write((byte)0);
+        _writer.Write(0u); // result count, patched by Build
+    }
+
+    public static byte[] Error(string message, int code, string name)
+    {
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream, Encoding.UTF8);
+        writer.Write(SqliteWireFormat.Magic);
+        writer.Write(SqliteWireFormat.Version);
+        writer.Write((byte)1);
+        WriteString(writer, message);
+        writer.Write(code);
+        WriteString(writer, name);
+        writer.Flush();
+        return stream.ToArray();
+    }
+
+    public ReplyBuilder Result(string[] columns, int[] storageClasses, int recordsAffected = 0, long lastInsertRowId = 0)
+    {
+        _resultCount++;
+        _writer.Write((ushort)columns.Length);
+        for (var i = 0; i < columns.Length; i++)
+        {
+            WriteString(_writer, columns[i]);
+            _writer.Write((byte)storageClasses[i]);
+        }
+
+        _writer.Write(recordsAffected);
+        _writer.Write(lastInsertRowId);
+        _rowCountPosition = _stream.Position;
+        _writer.Write(0u);
+        _rowCount = 0;
+        return this;
+    }
+
+    public ReplyBuilder Row(params object?[] cells)
+    {
+        _rowCount++;
+        foreach (var cell in cells)
+        {
+            switch (cell)
+            {
+                case null:
+                    _writer.Write((byte)SqliteWireFormat.TypeCode.Null);
+                    break;
+                case long value:
+                    _writer.Write((byte)SqliteWireFormat.TypeCode.Integer);
+                    _writer.Write(value);
+                    break;
+                case double value:
+                    _writer.Write((byte)SqliteWireFormat.TypeCode.Real);
+                    _writer.Write(value);
+                    break;
+                case string value:
+                    _writer.Write((byte)SqliteWireFormat.TypeCode.Text);
+                    WriteString(_writer, value);
+                    break;
+                case byte[] value:
+                    _writer.Write((byte)SqliteWireFormat.TypeCode.Blob);
+                    _writer.Write((uint)value.Length);
+                    _writer.Write(value);
+                    break;
+                default:
+                    throw new ArgumentException($"Unsupported cell {cell.GetType()}.");
+            }
+        }
+
+        return this;
+    }
+
+    public ReplyBuilder End(params string[] changedTables)
+    {
+        var end = _stream.Position;
+        _stream.Position = _rowCountPosition;
+        _writer.Write((uint)_rowCount);
+        _stream.Position = end;
+
+        _writer.Write((ushort)changedTables.Length);
+        foreach (var table in changedTables)
+        {
+            WriteString(_writer, table);
+        }
+
+        return this;
+    }
+
+    public byte[] Build()
+    {
+        _writer.Flush();
+        var bytes = _stream.ToArray();
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(3), (uint)_resultCount);
+        return bytes;
+    }
+
+    private static void WriteString(BinaryWriter writer, string text)
+    {
+        var bytes = Encoding.UTF8.GetBytes(text);
+        writer.Write((uint)bytes.Length);
+        writer.Write(bytes);
     }
 }

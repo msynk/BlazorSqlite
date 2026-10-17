@@ -1,14 +1,11 @@
 using BlazorSqlite.Samples.Client;
-using BlazorSqlite;
-using BlazorSqlite.Interop;
-using BlazorSqlite.Storage;
+using BlazorSqlite.Samples.Data;
 using BlazorSqlite.Storage.CacheStorage;
 using BlazorSqlite.Storage.InMemory;
 using BlazorSqlite.Storage.IndexedDb;
 using BlazorSqlite.Storage.Opfs;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
-using Microsoft.JSInterop;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<SampleApp>("#app");
@@ -19,37 +16,27 @@ builder.Services.AddScoped(sp => new HttpClient
     BaseAddress = new Uri(builder.HostEnvironment.BaseAddress),
 });
 
-builder.Services.AddSingleton<IStorageBindingStore>(sp =>
-    new LocalStorageBindingStore(sp.GetRequiredService<IJSRuntime>()));
+// One call registers selection, sticky bindings in localStorage, the worker transport, and the
+// shared database. Existing data outranks preference: a file created on IndexedDB stays there
+// even once OPFS becomes available, unless the application migrates it deliberately.
+builder.Services.AddBlazorSqlite(sqlite => sqlite
+    .AddStorageProvider<OpfsStorageProvider>()
+    .AddStorageProvider<IndexedDbStorageProvider>()
+    .AddStorageProvider<CacheStorageProvider>()
+    .AddStorageProvider<InMemoryStorageProvider>()
+    .UseStorage(s => s
+        .Prefer(OpfsStorageProvider.ProviderName)
+        .Fallback(IndexedDbStorageProvider.ProviderName)
+        .Fallback(CacheStorageProvider.ProviderName)
+        .Fallback(InMemoryStorageProvider.ProviderName)
+        .AllowNonPersistentFallback())
+    .AddDatabase(BrowserDatabase.DatabaseName));
 
-builder.Services.AddSingleton<IReadOnlyList<IBlazorSqliteStorageProvider>>(sp =>
-{
-    var js = sp.GetRequiredService<IJSRuntime>();
-    return new IBlazorSqliteStorageProvider[]
-    {
-        new OpfsStorageProvider(js),
-        new IndexedDbStorageProvider(js),
-        new CacheStorageProvider(js),
-        new InMemoryStorageProvider(),
-    };
-});
+// Contexts come from a factory bound to that database. Migrations run once per session, then
+// the demo catalog is seeded if the database is empty.
+builder.Services.AddBlazorSqliteDbContext<AppDbContext>(options =>
+    options.OnFirstUse = (db, ct) => DemoData.SeedIfEmptyAsync(db, ct));
 
-builder.Services.AddSingleton(sp =>
-{
-    var js = sp.GetRequiredService<IJSRuntime>();
-    var providers = sp.GetRequiredService<IReadOnlyList<IBlazorSqliteStorageProvider>>();
-    var bindings = sp.GetRequiredService<IStorageBindingStore>();
-    return new BlazorSqliteSessionFactory(
-        new StorageProviderResolver(providers, bindings),
-        new WorkerSqliteTransportFactory(js),
-        BlazorSqliteStorageSelectionBuilder.Create(s => s
-            .Prefer(OpfsStorageProvider.ProviderName)
-            .Fallback(IndexedDbStorageProvider.ProviderName)
-            .Fallback(CacheStorageProvider.ProviderName)
-            .Fallback(InMemoryStorageProvider.ProviderName)
-            .AllowNonPersistentFallback()),
-        bindings);
-});
 builder.Services.AddSingleton<BrowserDatabase>();
 
 TaskScheduler.UnobservedTaskException += (_, args) => SampleLog.Exception(args.Exception);

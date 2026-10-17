@@ -29,6 +29,14 @@ public static partial class SqliteFeatureGuards
             return;
         }
 
+        // Every guarded statement contains one of these words. Checking for them first keeps the
+        // regular expressions off the hot path, where almost no SQL mentions either.
+        if (!commandText.Contains("pragma", StringComparison.OrdinalIgnoreCase)
+            && !commandText.Contains("attach", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         if (WalJournalMode().IsMatch(commandText))
         {
             throw new BlazorSqliteException(

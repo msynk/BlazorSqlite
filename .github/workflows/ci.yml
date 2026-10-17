@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dotnet:
+    name: .NET build and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Restore (fetches the pinned wa-sqlite engine)
+        run: dotnet restore BlazorSqlite.slnx
+
+      - name: Build
+        run: dotnet build BlazorSqlite.slnx --no-restore -c Release
+
+      # Microsoft.Testing.Platform test executables, not `dotnet test` - see README.
+      - name: Storage tests
+        run: tests/BlazorSqlite.Storage.Tests/bin/Release/net10.0/BlazorSqlite.Storage.Tests
+
+      - name: Interop tests
+        run: tests/BlazorSqlite.Interop.Tests/bin/Release/net10.0/BlazorSqlite.Interop.Tests
+
+      - name: EF Core tests
+        run: tests/BlazorSqlite.EntityFrameworkCore.Tests/bin/Release/net10.0/BlazorSqlite.EntityFrameworkCore.Tests
+
+      - name: JavaScript unit tests
+        run: node --test tests/BlazorSqlite.Js.Tests/*.test.js
+
+      - name: Pack
+        run: dotnet pack BlazorSqlite.slnx --no-build -c Release -o artifacts/packages
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: artifacts/packages/*.nupkg
+
+  browser:
+    name: Browser tests (Chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Restore (fetches the engine and the vendored VFSes)
+        run: dotnet restore BlazorSqlite.slnx
+
+      - name: Build the static assets
+        run: dotnet build src/BlazorSqlite.Storage.Opfs src/BlazorSqlite.Storage.IndexedDb src/BlazorSqlite.Storage.CacheStorage --no-restore
+
+      - name: Install Playwright
+        working-directory: tests/BlazorSqlite.Browser.Tests
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run
+        working-directory: tests/BlazorSqlite.Browser.Tests
+        env:
+          CI: true
+        run: npx playwright test --project=chromium
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: tests/BlazorSqlite.Browser.Tests/test-results

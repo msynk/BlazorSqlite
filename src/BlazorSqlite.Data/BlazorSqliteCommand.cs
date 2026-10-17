@@ -19,9 +19,26 @@ public sealed class BlazorSqliteCommand : DbCommand
     [AllowNull]
     public override string CommandText { get; set; } = string.Empty;
 
-    public override int CommandTimeout { get; set; }
+    /// <summary>
+    /// Accepted for ADO.NET compatibility but not enforced: the engine runs on a worker that
+    /// cannot be interrupted from the main thread. A <see cref="CancellationToken"/> stops the
+    /// caller waiting; the statement runs to completion in the worker.
+    /// </summary>
+    public override int CommandTimeout { get; set; } = 30;
 
-    public override CommandType CommandType { get; set; } = CommandType.Text;
+    public override CommandType CommandType
+    {
+        get => CommandType.Text;
+        set
+        {
+            if (value != CommandType.Text)
+            {
+                throw new ArgumentException(
+                    $"SQLite has no stored procedures or table-direct commands; only {nameof(CommandType.Text)} is supported.",
+                    nameof(value));
+            }
+        }
+    }
 
     public override bool DesignTimeVisible { get; set; }
 
@@ -33,14 +50,25 @@ public sealed class BlazorSqliteCommand : DbCommand
         set => _connection = (BlazorSqliteConnection?)value;
     }
 
-    protected override DbParameterCollection DbParameterCollection { get; } = new BlazorSqliteParameterCollection();
+    /// <summary>The parameters, typed.</summary>
+    public new BlazorSqliteParameterCollection Parameters { get; } = [];
+
+    protected override DbParameterCollection DbParameterCollection => Parameters;
 
     protected override DbTransaction? DbTransaction { get; set; }
 
+    /// <summary>
+    /// The rowid of the most recent successful <c>INSERT</c> on the connection after this command
+    /// last executed. Equivalent to selecting <c>last_insert_rowid()</c> without the round trip.
+    /// </summary>
+    public long LastInsertRowId { get; private set; }
+
+    /// <summary>No-op: the worker cannot be interrupted. Cancel the token passed to the async call.</summary>
     public override void Cancel()
     {
     }
 
+    /// <summary>No-op: statements are prepared and cached by the worker on first use.</summary>
     public override void Prepare()
     {
     }
@@ -61,13 +89,15 @@ public sealed class BlazorSqliteCommand : DbCommand
 
     public override async Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
     {
-        var result = await ExecuteCoreAsync(SqliteResultKind.NonQuery, cancellationToken).ConfigureAwait(false);
+        var result = await ExecuteCoreAsync(SqliteResultKind.NonQuery, rowLimit: null, cancellationToken)
+            .ConfigureAwait(false);
         return result.RecordsAffected;
     }
 
     public override async Task<object?> ExecuteScalarAsync(CancellationToken cancellationToken)
     {
-        var result = await ExecuteCoreAsync(SqliteResultKind.Scalar, cancellationToken).ConfigureAwait(false);
+        var result = await ExecuteCoreAsync(SqliteResultKind.Scalar, rowLimit: 1, cancellationToken)
+            .ConfigureAwait(false);
         return result.Rows.Count > 0 && result.Rows[0].Length > 0 ? result.Rows[0][0] : null;
     }
 
@@ -75,12 +105,42 @@ public sealed class BlazorSqliteCommand : DbCommand
         CommandBehavior behavior,
         CancellationToken cancellationToken)
     {
-        var result = await ExecuteCoreAsync(SqliteResultKind.Reader, cancellationToken).ConfigureAwait(false);
-        return new BlazorSqliteDataReader(result);
+        int? rowLimit = behavior.HasFlag(CommandBehavior.SchemaOnly)
+            ? 0
+            : behavior.HasFlag(CommandBehavior.SingleRow) ? 1 : null;
+
+        var result = await ExecuteCoreAsync(SqliteResultKind.Reader, rowLimit, cancellationToken)
+            .ConfigureAwait(false);
+        return new BlazorSqliteDataReader([result], behavior.HasFlag(CommandBehavior.CloseConnection) ? _connection : null);
+    }
+
+    /// <summary>Builds the transport request this command would send, without sending it.</summary>
+    internal SqliteCommandRequest ToRequest(SqliteResultKind resultKind, int? rowLimit)
+    {
+        var parameters = Parameters.Count == 0
+            ? []
+            : new SqliteParameterValue[Parameters.Count];
+
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            var parameter = Parameters[i];
+            parameters[i] = new SqliteParameterValue(
+                parameter.ParameterName,
+                SqliteParameterBinding.ToTransportValue(parameter.Value));
+        }
+
+        return new SqliteCommandRequest
+        {
+            CommandText = CommandText,
+            Parameters = parameters,
+            ResultKind = resultKind,
+            RowLimit = rowLimit,
+        };
     }
 
     private async Task<SqliteCommandResult> ExecuteCoreAsync(
         SqliteResultKind resultKind,
+        int? rowLimit,
         CancellationToken cancellationToken)
     {
         if (_connection is null)
@@ -88,31 +148,16 @@ public sealed class BlazorSqliteCommand : DbCommand
             throw new InvalidOperationException("The command requires an open connection.");
         }
 
-        var parameters = new List<SqliteParameterValue>(DbParameterCollection.Count);
-        foreach (BlazorSqliteParameter parameter in DbParameterCollection)
-        {
-            parameters.Add(new SqliteParameterValue(
-                parameter.ParameterName,
-                SqliteParameterBinding.ToTransportValue(parameter.Value)));
-        }
-
-        SqliteFeatureGuards.EnsureSupported(CommandText, _connection.RuntimeLimits);
-
-        var request = new SqliteCommandRequest
-        {
-            CommandText = CommandText,
-            Parameters = parameters,
-            ResultKind = resultKind,
-        };
-        var results = await _connection.Transport
-            .ExecuteAsync([request], cancellationToken)
+        var results = await _connection
+            .ExecuteBatchAsync([ToRequest(resultKind, rowLimit)], cancellationToken)
             .ConfigureAwait(false);
 
-        if (SqliteTableNames.LooksLikeWrite(CommandText))
+        if (results.Count == 0)
         {
-            _connection.NotifyTablesChanged(SqliteTableNames.Extract(CommandText));
+            throw new InvalidOperationException("The transport returned no result for the command.");
         }
 
+        LastInsertRowId = _connection.LastInsertRowId;
         return results[0];
     }
 }

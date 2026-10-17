@@ -4,12 +4,13 @@ using Microsoft.JSInterop;
 namespace BlazorSqlite.Interop.Tests;
 
 /// <summary>
-/// A scripted <see cref="IJSRuntime"/> that plays back envelopes the way the real host's
-/// <c>call</c> method would, so the transport can be tested without a browser.
+/// A scripted <see cref="IJSRuntime"/> that plays back envelopes and binary replies the way the
+/// real host's <c>call</c> and <c>executeBinary</c> methods would, so the transport can be tested
+/// without a browser.
 /// </summary>
 internal sealed class ScriptedJsRuntime : IJSRuntime
 {
-    private readonly Queue<JsonElement> _envelopes = new();
+    private readonly Queue<object> _replies = new();
 
     public List<JsCall> Calls { get; } = [];
 
@@ -19,17 +20,24 @@ internal sealed class ScriptedJsRuntime : IJSRuntime
 
     public bool HostDisposed { get; private set; }
 
+    /// <summary>The .NET object and method the host was asked to forward cross-tab notifications to.</summary>
+    public (object Target, string Method)? Subscription { get; private set; }
+
     public ScriptedJsRuntime()
     {
         Module = new ScriptedJsObject(this, "module");
         Host = new ScriptedJsObject(this, "host");
     }
 
+    /// <summary>Queues a JSON envelope for the next <c>call</c>.</summary>
     public void EnqueueEnvelope(string json)
     {
         using var document = JsonDocument.Parse(json);
-        _envelopes.Enqueue(document.RootElement.Clone());
+        _replies.Enqueue(document.RootElement.Clone());
     }
+
+    /// <summary>Queues a binary reply for the next <c>executeBinary</c>.</summary>
+    public void EnqueueReply(byte[] reply) => _replies.Enqueue(reply);
 
     public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
         => InvokeAsync<TValue>(identifier, CancellationToken.None, args);
@@ -62,14 +70,20 @@ internal sealed class ScriptedJsRuntime : IJSRuntime
             return ValueTask.FromResult((TValue)(object)Host);
         }
 
-        if (objectName == "host" && identifier == "call")
+        if (objectName == "host" && identifier is "call" or "executeBinary")
         {
-            if (_envelopes.Count == 0)
+            if (_replies.Count == 0)
             {
-                throw new InvalidOperationException("The test did not enqueue an envelope for this call.");
+                throw new InvalidOperationException("The test did not enqueue a reply for this call.");
             }
 
-            return ValueTask.FromResult((TValue)(object)_envelopes.Dequeue());
+            return ValueTask.FromResult((TValue)_replies.Dequeue());
+        }
+
+        if (objectName == "host" && identifier == "subscribeDotNet")
+        {
+            Subscription = (args![0]!, (string)args[1]!);
+            return ValueTask.FromResult(default(TValue)!);
         }
 
         if (objectName == "host" && identifier == "dispose")

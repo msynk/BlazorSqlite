@@ -16,7 +16,7 @@ namespace BlazorSqlite.Interop;
 /// image, then flips the binding. A failed copy leaves the source and the binding untouched.
 /// </para>
 /// </remarks>
-public sealed class BlazorSqliteSessionFactory
+public sealed class BlazorSqliteSessionFactory : IBlazorSqliteSessionFactory
 {
     private readonly StorageProviderResolver _resolver;
     private readonly ISqliteTransportFactory _transports;
@@ -43,9 +43,7 @@ public sealed class BlazorSqliteSessionFactory
         _migrator = migrator ?? new StorageMigrator();
     }
 
-    /// <summary>
-    /// Opens <paramref name="databaseName"/> on the backend selection chooses.
-    /// </summary>
+    /// <inheritdoc />
     public async Task<BlazorSqliteSession> OpenAsync(
         string databaseName,
         CancellationToken cancellationToken = default)

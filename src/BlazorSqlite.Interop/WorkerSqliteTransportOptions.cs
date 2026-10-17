@@ -41,4 +41,28 @@ public sealed class WorkerSqliteTransportOptions
 
     /// <summary>Whether the selected backend can honour <c>PRAGMA page_size=…</c>.</summary>
     public bool CanChangePageSize { get; init; } = true;
+
+    /// <summary>
+    /// Whether to run <c>PRAGMA foreign_keys = ON</c> when the database opens. On by default,
+    /// because that is what Microsoft.Data.Sqlite does and what an EF Core model scaffolded on the
+    /// server expects: a <c>RESTRICT</c> or <c>CASCADE</c> rule that silently does nothing in the
+    /// browser is a data bug, not a performance setting.
+    /// </summary>
+    public bool EnableForeignKeys { get; init; } = true;
+
+    /// <summary>
+    /// Extra statements to run once the database is open, after the provider's own and after
+    /// <see cref="EnableForeignKeys"/>: <c>PRAGMA cache_size</c>, <c>PRAGMA synchronous</c>, and
+    /// the like. They run outside the SQL guards, so WAL cannot be enabled this way either.
+    /// </summary>
+    public IReadOnlyList<string> OnOpenSql { get; init; } = [];
+
+    /// <summary>
+    /// JavaScript modules that register user-defined functions, collations, or virtual tables on
+    /// the open database. Each exports a function - <c>register</c> unless the module says
+    /// otherwise - receiving <c>{ module, sqlite3, db, databaseName }</c>, the same handles the
+    /// built-in EF function set uses. They load inside the worker, so they must be served from a URL
+    /// the worker can import.
+    /// </summary>
+    public IReadOnlyList<BlazorSqliteJsModule> ExtensionModules { get; init; } = [];
 }

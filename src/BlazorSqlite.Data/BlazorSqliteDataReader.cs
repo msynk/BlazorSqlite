@@ -4,18 +4,28 @@ using System.Globalization;
 
 namespace BlazorSqlite.Data;
 
-/// <summary>Reads a materialized result set returned by the transport.</summary>
+/// <summary>Reads the materialized result sets returned by the transport.</summary>
 /// <remarks>
-/// The transport delivers the whole result set in one round trip, so this reader walks an
-/// in-memory buffer rather than streaming.
+/// The transport delivers each result set in one round trip, so this reader walks in-memory
+/// buffers rather than streaming. A reader over a batch holds one result set per command and
+/// moves between them with <see cref="NextResult"/>.
 /// </remarks>
 public sealed class BlazorSqliteDataReader : DbDataReader
 {
-    private readonly SqliteCommandResult _result;
+    private readonly IReadOnlyList<SqliteCommandResult> _results;
+    private readonly BlazorSqliteConnection? _closeConnection;
+    private SqliteCommandResult _result;
+    private Dictionary<string, int>? _ordinals;
+    private int _resultIndex;
     private int _rowIndex = -1;
     private bool _closed;
 
-    internal BlazorSqliteDataReader(SqliteCommandResult result) => _result = result;
+    internal BlazorSqliteDataReader(IReadOnlyList<SqliteCommandResult> results, BlazorSqliteConnection? closeConnection = null)
+    {
+        _results = results.Count > 0 ? results : [new SqliteCommandResult()];
+        _result = _results[0];
+        _closeConnection = closeConnection;
+    }
 
     public override int FieldCount => _result.ColumnNames.Count;
 
@@ -23,9 +33,13 @@ public sealed class BlazorSqliteDataReader : DbDataReader
 
     public override bool IsClosed => _closed;
 
+    /// <summary>Rows changed by the writes in the current result set's command.</summary>
     public override int RecordsAffected => _result.RecordsAffected;
 
     public override int Depth => 0;
+
+    /// <summary>The rowid of the last <c>INSERT</c> in the current result set's command.</summary>
+    public long LastInsertRowId => _result.LastInsertRowId;
 
     public override object this[int ordinal] => GetValue(ordinal);
 
@@ -35,6 +49,7 @@ public sealed class BlazorSqliteDataReader : DbDataReader
     {
         if (_rowIndex + 1 >= _result.Rows.Count)
         {
+            _rowIndex = _result.Rows.Count;
             return false;
         }
 
@@ -45,37 +60,86 @@ public sealed class BlazorSqliteDataReader : DbDataReader
     public override Task<bool> ReadAsync(CancellationToken cancellationToken)
         => Task.FromResult(Read());
 
-    public override bool NextResult() => false;
+    public override bool NextResult()
+    {
+        if (_resultIndex + 1 >= _results.Count)
+        {
+            return false;
+        }
 
-    public override void Close() => _closed = true;
+        _resultIndex++;
+        _result = _results[_resultIndex];
+        _ordinals = null;
+        _rowIndex = -1;
+        return true;
+    }
+
+    public override Task<bool> NextResultAsync(CancellationToken cancellationToken)
+        => Task.FromResult(NextResult());
+
+    public override void Close()
+    {
+        if (_closed)
+        {
+            return;
+        }
+
+        _closed = true;
+        _closeConnection?.Close();
+    }
 
     public override string GetName(int ordinal) => _result.ColumnNames[ordinal];
 
     public override int GetOrdinal(string name)
     {
-        for (var i = 0; i < _result.ColumnNames.Count; i++)
+        ArgumentNullException.ThrowIfNull(name);
+
+        if (_ordinals is null)
         {
-            if (string.Equals(_result.ColumnNames[i], name, StringComparison.OrdinalIgnoreCase))
+            var names = _result.ColumnNames;
+            _ordinals = new Dictionary<string, int>(names.Count, StringComparer.OrdinalIgnoreCase);
+            for (var i = names.Count - 1; i >= 0; i--)
             {
-                return i;
+                // First occurrence wins for duplicate names, as every ADO.NET provider does.
+                _ordinals[names[i]] = i;
             }
         }
 
-        throw new IndexOutOfRangeException($"No column named '{name}'.");
+        return _ordinals.TryGetValue(name, out var ordinal)
+            ? ordinal
+            : throw new IndexOutOfRangeException($"No column named '{name}'.");
     }
 
-    public override string GetDataTypeName(int ordinal) => _result.ColumnTypes[ordinal] ?? "BLOB";
+    public override string GetDataTypeName(int ordinal) => _result.ColumnTypes.Count > ordinal
+        ? _result.ColumnTypes[ordinal] ?? "BLOB"
+        : "BLOB";
 
-    public override Type GetFieldType(int ordinal) => GetValue(ordinal)?.GetType() ?? typeof(object);
+    /// <summary>
+    /// The CLR type of the column, from the current row's value when there is one and from the
+    /// column's storage class otherwise, so it can be asked before <see cref="Read"/>.
+    /// </summary>
+    public override Type GetFieldType(int ordinal)
+    {
+        if (_rowIndex >= 0 && _rowIndex < _result.Rows.Count && _result.Rows[_rowIndex][ordinal] is { } value)
+        {
+            return value.GetType();
+        }
+
+        var typeName = _result.ColumnTypes.Count > ordinal ? _result.ColumnTypes[ordinal] : null;
+        return TypeForStorageClass(typeName);
+    }
 
     public override object GetValue(int ordinal) => CurrentRow[ordinal] ?? DBNull.Value;
 
     public override int GetValues(object[] values)
     {
-        var count = Math.Min(values.Length, FieldCount);
+        ArgumentNullException.ThrowIfNull(values);
+
+        var row = CurrentRow;
+        var count = Math.Min(values.Length, row.Length);
         for (var i = 0; i < count; i++)
         {
-            values[i] = GetValue(i);
+            values[i] = row[i] ?? DBNull.Value;
         }
 
         return count;
@@ -83,11 +147,24 @@ public sealed class BlazorSqliteDataReader : DbDataReader
 
     public override bool IsDBNull(int ordinal) => CurrentRow[ordinal] is null;
 
-    public override bool GetBoolean(int ordinal) => Convert.ToBoolean(RequireValue(ordinal), CultureInfo.InvariantCulture);
+    public override Task<bool> IsDBNullAsync(int ordinal, CancellationToken cancellationToken)
+        => Task.FromResult(IsDBNull(ordinal));
+
+    public override bool GetBoolean(int ordinal) => RequireValue(ordinal) switch
+    {
+        bool value => value,
+        long value => value != 0,
+        string text => !(text is "0" || text.Equals("false", StringComparison.OrdinalIgnoreCase)),
+        var other => Convert.ToBoolean(other, CultureInfo.InvariantCulture),
+    };
 
     public override byte GetByte(int ordinal) => Convert.ToByte(RequireValue(ordinal), CultureInfo.InvariantCulture);
 
-    public override char GetChar(int ordinal) => Convert.ToChar(RequireValue(ordinal), CultureInfo.InvariantCulture);
+    public override char GetChar(int ordinal) => RequireValue(ordinal) switch
+    {
+        string { Length: > 0 } text => text[0],
+        var other => Convert.ToChar(other, CultureInfo.InvariantCulture),
+    };
 
     public override DateTime GetDateTime(int ordinal) => RequireValue(ordinal) switch
     {
@@ -131,13 +208,25 @@ public sealed class BlazorSqliteDataReader : DbDataReader
 
     public override long GetBytes(int ordinal, long dataOffset, byte[]? buffer, int bufferOffset, int length)
     {
-        var source = (byte[])RequireValue(ordinal);
+        var source = RequireValue(ordinal) switch
+        {
+            byte[] bytes => bytes,
+            string text => System.Text.Encoding.UTF8.GetBytes(text),
+            var other => throw new InvalidCastException($"Cannot read {other.GetType()} as bytes."),
+        };
+
         if (buffer is null)
         {
             return source.Length;
         }
 
+        if (dataOffset >= source.Length)
+        {
+            return 0;
+        }
+
         var count = (int)Math.Min(length, source.Length - dataOffset);
+        count = Math.Min(count, buffer.Length - bufferOffset);
         Array.Copy(source, dataOffset, buffer, bufferOffset, count);
         return count;
     }
@@ -150,10 +239,25 @@ public sealed class BlazorSqliteDataReader : DbDataReader
             return source.Length;
         }
 
+        if (dataOffset >= source.Length)
+        {
+            return 0;
+        }
+
         var count = (int)Math.Min(length, source.Length - dataOffset);
+        count = Math.Min(count, buffer.Length - bufferOffset);
         source.CopyTo((int)dataOffset, buffer, bufferOffset, count);
         return count;
     }
+
+    public override Stream GetStream(int ordinal) => new MemoryStream(RequireValue(ordinal) switch
+    {
+        byte[] bytes => bytes,
+        string text => System.Text.Encoding.UTF8.GetBytes(text),
+        var other => throw new InvalidCastException($"Cannot read {other.GetType()} as a stream."),
+    }, writable: false);
+
+    public override TextReader GetTextReader(int ordinal) => new StringReader(GetString(ordinal));
 
     public override IEnumerator GetEnumerator() => new DbEnumerator(this, closeReader: false);
 
@@ -163,4 +267,39 @@ public sealed class BlazorSqliteDataReader : DbDataReader
 
     private object RequireValue(int ordinal)
         => CurrentRow[ordinal] ?? throw new InvalidCastException($"Column {ordinal} is NULL.");
+
+    private static Type TypeForStorageClass(string? typeName)
+    {
+        if (typeName is null)
+        {
+            return typeof(object);
+        }
+
+        var upper = typeName.ToUpperInvariant();
+        if (upper.Contains("INT", StringComparison.Ordinal))
+        {
+            return typeof(long);
+        }
+
+        if (upper.Contains("CHAR", StringComparison.Ordinal)
+            || upper.Contains("CLOB", StringComparison.Ordinal)
+            || upper.Contains("TEXT", StringComparison.Ordinal))
+        {
+            return typeof(string);
+        }
+
+        if (upper.Contains("BLOB", StringComparison.Ordinal))
+        {
+            return typeof(byte[]);
+        }
+
+        if (upper.Contains("REAL", StringComparison.Ordinal)
+            || upper.Contains("FLOA", StringComparison.Ordinal)
+            || upper.Contains("DOUB", StringComparison.Ordinal))
+        {
+            return typeof(double);
+        }
+
+        return typeof(object);
+    }
 }

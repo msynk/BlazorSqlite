@@ -1,5 +1,6 @@
 using System.Data.Common;
 using BlazorSqlite.EntityFrameworkCore;
+using BlazorSqlite.Interop;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -50,6 +51,30 @@ public static class BlazorSqliteDbContextOptionsExtensions
         BrowserSqlitePcl.EnsureInitialized();
         optionsBuilder.UseSqlite(connection, contextOwnsConnection, sqliteOptionsAction);
         ReplaceSyncBoundServices(optionsBuilder);
+        return optionsBuilder;
+    }
+
+    /// <summary>
+    /// Configures the context to use the connection of an open <see cref="BlazorSqliteSession"/>.
+    /// The session keeps owning the worker; disposing the context does not close it.
+    /// </summary>
+    public static DbContextOptionsBuilder UseBlazorSqlite(
+        this DbContextOptionsBuilder optionsBuilder,
+        BlazorSqliteSession session,
+        Action<SqliteDbContextOptionsBuilder>? sqliteOptionsAction = null)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        return optionsBuilder.UseBlazorSqlite(session.Connection, contextOwnsConnection: false, sqliteOptionsAction);
+    }
+
+    /// <inheritdoc cref="UseBlazorSqlite(DbContextOptionsBuilder, BlazorSqliteSession, Action{SqliteDbContextOptionsBuilder}?)"/>
+    public static DbContextOptionsBuilder<TContext> UseBlazorSqlite<TContext>(
+        this DbContextOptionsBuilder<TContext> optionsBuilder,
+        BlazorSqliteSession session,
+        Action<SqliteDbContextOptionsBuilder>? sqliteOptionsAction = null)
+        where TContext : DbContext
+    {
+        ((DbContextOptionsBuilder)optionsBuilder).UseBlazorSqlite(session, sqliteOptionsAction);
         return optionsBuilder;
     }
 

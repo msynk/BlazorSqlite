@@ -16,8 +16,25 @@
   <PropertyGroup Label="Packaging">
     <Authors>BlazorSqlite</Authors>
     <Product>BlazorSqlite</Product>
-    <VersionPrefix>0.1.0</VersionPrefix>
+    <Company>BlazorSqlite</Company>
+    <Copyright>Copyright (c) BlazorSqlite contributors</Copyright>
+    <VersionPrefix>0.2.0</VersionPrefix>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/msynk/BlazorSqlite</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/msynk/BlazorSqlite</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>blazor;webassembly;sqlite;wasm;efcore;entity-framework;opfs;indexeddb;offline;local-first</PackageTags>
     <PackageReadmeFile Condition="Exists('$(MSBuildProjectDirectory)/README.md')">README.md</PackageReadmeFile>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)/README.md')">
+    <None Include="$(MSBuildProjectDirectory)/README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
 
 </Project>

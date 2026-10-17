@@ -17,6 +17,7 @@ public sealed class BlazorSqliteConnection : DbConnection
     private readonly ISqliteTransport _transport;
     private ConnectionState _state = ConnectionState.Closed;
     private string _database;
+    private bool _subscribed;
 
     public BlazorSqliteConnection(ISqliteTransport transport, string databaseName)
     {
@@ -39,14 +40,24 @@ public sealed class BlazorSqliteConnection : DbConnection
     public SqliteRuntimeLimits RuntimeLimits { get; init; } = SqliteRuntimeLimits.Unrestricted;
 
     /// <summary>
+    /// The rowid of the most recent successful <c>INSERT</c> executed through this connection, as
+    /// SQLite's <c>last_insert_rowid()</c> reports it after the last command completed.
+    /// </summary>
+    public long LastInsertRowId { get; private set; }
+
+    /// <summary>
     /// Raised after a write so live queries can re-run. Table-level: every listed name was touched
-    /// by the statement that just completed.
+    /// by the statement that just completed, locally or - when the transport can hear them - in
+    /// another tab.
     /// </summary>
     public event EventHandler<SqliteTablesChangedEventArgs>? TablesChanged;
 
-    /// <summary>Used by the transport when another tab reports a write.</summary>
+    /// <summary>Raises <see cref="TablesChanged"/> for writes made outside this connection.</summary>
     public void NotifyTablesChanged(IEnumerable<string> tables)
-        => TablesChanged?.Invoke(this, new SqliteTablesChangedEventArgs([.. tables]));
+    {
+        ArgumentNullException.ThrowIfNull(tables);
+        TablesChanged?.Invoke(this, new SqliteTablesChangedEventArgs([.. tables]));
+    }
 
     [AllowNull]
     public override string ConnectionString { get; set; }
@@ -58,6 +69,9 @@ public sealed class BlazorSqliteConnection : DbConnection
     public override string ServerVersion => "3";
 
     public override ConnectionState State => _state;
+
+    /// <summary>Batches are supported: one round trip runs every command in order.</summary>
+    public override bool CanCreateBatch => true;
 
     public override void Open()
         => throw BlazorSqliteSynchronousApiNotSupportedException.ForMember(nameof(Open), nameof(OpenAsync));
@@ -74,6 +88,7 @@ public sealed class BlazorSqliteConnection : DbConnection
         {
             await _transport.OpenAsync(_database, cancellationToken).ConfigureAwait(false);
             _state = ConnectionState.Open;
+            SubscribeToRemoteChanges();
         }
         catch
         {
@@ -113,7 +128,15 @@ public sealed class BlazorSqliteConnection : DbConnection
         _database = databaseName;
     }
 
-    protected override DbCommand CreateDbCommand() => new BlazorSqliteCommand(this);
+    /// <summary>Creates a command bound to this connection.</summary>
+    public new BlazorSqliteCommand CreateCommand() => new(this);
+
+    /// <summary>Creates a batch bound to this connection.</summary>
+    public new BlazorSqliteBatch CreateBatch() => new(this);
+
+    protected override DbCommand CreateDbCommand() => CreateCommand();
+
+    protected override DbBatch CreateDbBatch() => CreateBatch();
 
     protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel)
         => throw BlazorSqliteSynchronousApiNotSupportedException.ForMember(
@@ -123,10 +146,84 @@ public sealed class BlazorSqliteConnection : DbConnection
         IsolationLevel isolationLevel,
         CancellationToken cancellationToken)
     {
+        if (CurrentTransaction is not null)
+        {
+            throw new InvalidOperationException(
+                "A transaction is already active on this connection. SQLite does not nest "
+                + "transactions; use savepoints (DbTransaction.SaveAsync) inside the active one.");
+        }
+
         var transaction = new BlazorSqliteTransaction(this, isolationLevel);
         await transaction.BeginAsync(cancellationToken).ConfigureAwait(false);
         CurrentTransaction = transaction;
         return transaction;
+    }
+
+    /// <summary>
+    /// Reads the whole database out as a SQLite file image, consistent as of the last committed
+    /// write, without closing the connection.
+    /// </summary>
+    /// <exception cref="NotSupportedException">The transport cannot snapshot an open database.</exception>
+    public Task<byte[]> ExportAsync(CancellationToken cancellationToken = default)
+        => _transport is ISqliteSnapshotSource snapshots
+            ? snapshots.ExportAsync(cancellationToken)
+            : throw new NotSupportedException(
+                $"{_transport.GetType().Name} cannot export an open database. Close the session and "
+                + "use the storage provider's Admin.ExportAsync instead.");
+
+    /// <summary>
+    /// Runs a batch of requests in one transport round trip and returns one result per request.
+    /// This is the lowest-level execution path; commands and batches are built on it.
+    /// </summary>
+    public async Task<IReadOnlyList<SqliteCommandResult>> ExecuteBatchAsync(
+        IReadOnlyList<SqliteCommandRequest> batch,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+
+        if (_state != ConnectionState.Open)
+        {
+            throw new InvalidOperationException("The connection is not open. Call OpenAsync first.");
+        }
+
+        for (var i = 0; i < batch.Count; i++)
+        {
+            SqliteFeatureGuards.EnsureSupported(batch[i].CommandText, RuntimeLimits);
+        }
+
+        var results = await _transport.ExecuteAsync(batch, cancellationToken).ConfigureAwait(false);
+
+        HashSet<string>? changed = null;
+        for (var i = 0; i < results.Count; i++)
+        {
+            var result = results[i];
+            if (result.LastInsertRowId != 0)
+            {
+                LastInsertRowId = result.LastInsertRowId;
+            }
+
+            // The engine's own account of what changed when the transport has one; the SQL text when
+            // it does not. Extra names only cause extra re-queries, never a missed one.
+            if (result.ChangedTables is { } reported)
+            {
+                if (reported.Count > 0)
+                {
+                    (changed ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase)).UnionWith(reported);
+                }
+            }
+            else if (i < batch.Count && SqliteTableNames.LooksLikeWrite(batch[i].CommandText))
+            {
+                (changed ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase))
+                    .UnionWith(SqliteTableNames.Extract(batch[i].CommandText));
+            }
+        }
+
+        if (changed is { Count: > 0 })
+        {
+            TablesChanged?.Invoke(this, new SqliteTablesChangedEventArgs(changed));
+        }
+
+        return results;
     }
 
     /// <summary>Runs a statement that returns nothing, bypassing command plumbing.</summary>
@@ -136,4 +233,34 @@ public sealed class BlazorSqliteConnection : DbConnection
         var request = new SqliteCommandRequest { CommandText = sql };
         await _transport.ExecuteAsync([request], cancellationToken).ConfigureAwait(false);
     }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            if (_subscribed && _transport is ISqliteChangeNotifier notifier)
+            {
+                notifier.RemoteTablesChanged -= OnRemoteTablesChanged;
+                _subscribed = false;
+            }
+
+            Close();
+        }
+
+        base.Dispose(disposing);
+    }
+
+    private void SubscribeToRemoteChanges()
+    {
+        if (_subscribed || _transport is not ISqliteChangeNotifier notifier)
+        {
+            return;
+        }
+
+        notifier.RemoteTablesChanged += OnRemoteTablesChanged;
+        _subscribed = true;
+    }
+
+    private void OnRemoteTablesChanged(object? sender, SqliteTablesChangedEventArgs e)
+        => TablesChanged?.Invoke(this, e);
 }

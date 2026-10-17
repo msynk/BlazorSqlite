@@ -1,7 +1,9 @@
 // Helpers for driving the library from test code.
 //
-// Tests write plain JavaScript values and read plain results; the wire tagging is applied and undone
-// here using the library's own encoders, so tests exercise the real format rather than a parallel one.
+// Tests write plain JavaScript values and read plain results. Batches go through the binary wire
+// path - the one the .NET transport uses - encoded and decoded with the library's own codec, so
+// every test here exercises the real format rather than a parallel one. `interop.spec.js` covers the
+// tagged JSON path separately.
 //
 // Values that JSON cannot carry are tagged again on the way out to Playwright, so that "came back as a
 // 64-bit integer" and "came back as a blob" stay observable instead of being silently coerced.
@@ -11,18 +13,19 @@
  *
  * @returns {Promise<{version: string, build: string}>} what the worker reports about itself
  */
-export async function openHost(page, { databaseName = 'test.db', requiredBuild = 'synchronous', vfs, limits } = {}) {
+export async function openHost(page, { databaseName = 'test.db', requiredBuild = 'synchronous', vfs, limits, onOpenSql, extensions } = {}) {
   await page.goto('/index.html');
   await page.waitForFunction(() => globalThis.BlazorSqliteReady === true);
 
   return await page.evaluate(async options => {
     globalThis.host = await globalThis.BlazorSqlite.host.open(options);
     return await globalThis.host.version();
-  }, { databaseName, requiredBuild, vfs, limits });
+  }, { databaseName, requiredBuild, vfs, limits, onOpenSql, extensions });
 }
 
 /**
- * Runs a batch, encoding parameters and decoding rows through the library's wire helpers.
+ * Runs a batch through the binary path, encoding parameters and decoding rows through the library's
+ * wire helpers.
  *
  * Parameters are given as `{ name, value }` with a natural JavaScript value. Two kinds cannot cross into
  * `page.evaluate` as themselves and are written as `{ name, bytes: [...] }` for a blob and
@@ -30,7 +33,7 @@ export async function openHost(page, { databaseName = 'test.db', requiredBuild =
  */
 export function execute(page, batch) {
   return page.evaluate(async batch => {
-    const { encodeValue, decodeValue } = globalThis.BlazorSqlite.host;
+    const { encodeValue, decodeValue, encodeBatchBinary, decodeReplyBinary } = globalThis.BlazorSqlite.host;
 
     const naturalValue = p => {
       if (p.bytes) return new Uint8Array(p.bytes);
@@ -41,13 +44,14 @@ export function execute(page, batch) {
     const wire = batch.map(request => ({
       commandText: request.commandText,
       resultKind: request.resultKind ?? 'nonQuery',
+      maxRows: request.maxRows,
       parameters: (request.parameters ?? []).map(p => ({
         name: p.name,
         ...encodeValue(naturalValue(p)),
       })),
     }));
 
-    const results = await globalThis.host.execute(wire);
+    const results = decodeReplyBinary(await globalThis.host.executeBinary(encodeBatchBinary(wire)));
 
     // Re-tagged for the trip to the test runner: JSON has no BigInt and no bytes.
     const forTest = value => {
@@ -60,6 +64,8 @@ export function execute(page, batch) {
       columnNames: result.columnNames,
       columnTypes: result.columnTypes,
       recordsAffected: result.recordsAffected,
+      lastInsertRowId: Number(result.lastInsertRowId),
+      changedTables: result.changedTables,
       rows: result.rows.map(row => row.v.map((value, i) => forTest(decodeValue(row.t[i], value)))),
     }));
   }, batch);
@@ -85,7 +91,7 @@ export async function exec(page, commandText, parameters = []) {
  */
 export function executeExpectingFailure(page, batch) {
   return page.evaluate(async batch => {
-    const { encodeValue } = globalThis.BlazorSqlite.host;
+    const { encodeValue, encodeBatchBinary, decodeReplyBinary } = globalThis.BlazorSqlite.host;
 
     const wire = batch.map(request => ({
       commandText: request.commandText,
@@ -94,7 +100,7 @@ export function executeExpectingFailure(page, batch) {
     }));
 
     try {
-      await globalThis.host.execute(wire);
+      decodeReplyBinary(await globalThis.host.executeBinary(encodeBatchBinary(wire)));
       return null;
     } catch (error) {
       return { message: error.message, sqliteCode: error.sqliteCode ?? null, name: error.name };

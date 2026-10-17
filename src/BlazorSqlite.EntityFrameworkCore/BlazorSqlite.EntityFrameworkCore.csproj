@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BlazorSqlite.Data\BlazorSqlite.Data.csproj" />
+    <ProjectReference Include="..\BlazorSqlite.Interop\BlazorSqlite.Interop.csproj" />
   </ItemGroup>
 
 </Project>

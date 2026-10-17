@@ -1,6 +1,8 @@
 using System.Data;
+using System.Runtime.InteropServices;
 using BlazorSqlite.Data;
 using Microsoft.Data.Sqlite;
+using SQLitePCL;
 
 namespace BlazorSqlite.Testing;
 
@@ -9,13 +11,15 @@ namespace BlazorSqlite.Testing;
 /// </summary>
 /// <remarks>
 /// Stands in for the web-worker transport so provider behaviour can be tested on desktop .NET.
-/// It mirrors the worker's responsibilities exactly - including installing the EF function set
-/// (see <see cref="SqliteFunctions"/>) - so a test that passes here is a meaningful signal.
+/// It mirrors the worker's responsibilities exactly - installing the EF function set (see
+/// <see cref="SqliteFunctions"/>), reporting changed tables from the engine's update hook, and
+/// snapshotting through <c>sqlite3_serialize</c> - so a test that passes here is a meaningful signal.
 /// </remarks>
-public sealed class InProcessSqliteTransport : ISqliteTransport
+public sealed class InProcessSqliteTransport : ISqliteTransport, ISqliteSnapshotSource
 {
     private readonly string _connectionString;
     private readonly bool _registerEfFunctions;
+    private readonly HashSet<string> _changed = new(StringComparer.OrdinalIgnoreCase);
     private SqliteConnection? _connection;
 
     /// <param name="connectionString">
@@ -36,6 +40,9 @@ public sealed class InProcessSqliteTransport : ISqliteTransport
     /// <summary>Statements executed so far, in order. Useful for asserting generated SQL.</summary>
     public List<string> ExecutedCommands { get; } = [];
 
+    /// <summary>The underlying connection, for tests that need to inspect engine state directly.</summary>
+    public SqliteConnection? Connection => _connection;
+
     public Task OpenAsync(string databaseName, CancellationToken cancellationToken = default)
     {
         if (_connection is not null)
@@ -50,6 +57,13 @@ public sealed class InProcessSqliteTransport : ISqliteTransport
         {
             SqliteFunctions.Register(_connection);
         }
+
+        // The same source of truth the worker uses: the engine names every table a row changed
+        // in, including through triggers and cascades.
+        raw.sqlite3_update_hook(
+            _connection.Handle!,
+            (_, _, _, table, _) => _changed.Add(table.utf8_to_string()),
+            null);
 
         return Task.CompletedTask;
     }
@@ -77,10 +91,58 @@ public sealed class InProcessSqliteTransport : ISqliteTransport
         {
             cancellationToken.ThrowIfCancellationRequested();
             ExecutedCommands.Add(request.CommandText);
-            results.Add(Execute(_connection, request));
+            _changed.Clear();
+
+            var result = Execute(_connection, request);
+
+            if (SqliteTableNames.LooksLikeWrite(request.CommandText)
+                && request.CommandText.Contains("create", StringComparison.OrdinalIgnoreCase)
+                | request.CommandText.Contains("drop", StringComparison.OrdinalIgnoreCase)
+                | request.CommandText.Contains("alter", StringComparison.OrdinalIgnoreCase))
+            {
+                // DDL does not reach the update hook; the worker uses the same fallback.
+                _changed.UnionWith(SqliteTableNames.Extract(request.CommandText));
+            }
+
+            results.Add(result with
+            {
+                LastInsertRowId = raw.sqlite3_last_insert_rowid(_connection.Handle!),
+                ChangedTables = new HashSet<string>(_changed, StringComparer.OrdinalIgnoreCase),
+            });
         }
 
         return Task.FromResult<IReadOnlyList<SqliteCommandResult>>(results);
+    }
+
+    /// <inheritdoc />
+    public Task<byte[]> ExportAsync(CancellationToken cancellationToken = default)
+    {
+        if (_connection is null)
+        {
+            throw new InvalidOperationException("The transport is not open.");
+        }
+
+        var pointer = raw.sqlite3_serialize(_connection.Handle!, "main", out var size, 0);
+        if (pointer == IntPtr.Zero)
+        {
+            if (size == 0)
+            {
+                return Task.FromResult(Array.Empty<byte>());
+            }
+
+            throw new BlazorSqliteException("sqlite3_serialize could not snapshot the database.");
+        }
+
+        try
+        {
+            var image = new byte[size];
+            Marshal.Copy(pointer, image, 0, image.Length);
+            return Task.FromResult(image);
+        }
+        finally
+        {
+            raw.sqlite3_free(pointer);
+        }
     }
 
     private static SqliteCommandResult Execute(SqliteConnection connection, SqliteCommandRequest request)
@@ -110,9 +172,10 @@ public sealed class InProcessSqliteTransport : ISqliteTransport
             }
 
             case SqliteResultKind.Reader:
-                using (var reader = command.ExecuteReader())
+                using (var reader = command.ExecuteReader(
+                    request.RowLimit == 0 ? CommandBehavior.SchemaOnly : CommandBehavior.Default))
                 {
-                    return Materialize(reader);
+                    return Materialize(reader, request.RowLimit ?? int.MaxValue);
                 }
 
             default:
@@ -120,7 +183,7 @@ public sealed class InProcessSqliteTransport : ISqliteTransport
         }
     }
 
-    private static SqliteCommandResult Materialize(SqliteDataReader reader)
+    private static SqliteCommandResult Materialize(SqliteDataReader reader, int rowLimit)
     {
         var columnNames = new string[reader.FieldCount];
         var columnTypes = new string?[reader.FieldCount];
@@ -131,7 +194,7 @@ public sealed class InProcessSqliteTransport : ISqliteTransport
         }
 
         var rows = new List<object?[]>();
-        while (reader.Read())
+        while (rows.Count < rowLimit && reader.Read())
         {
             var row = new object?[reader.FieldCount];
             for (var i = 0; i < reader.FieldCount; i++)
@@ -140,6 +203,11 @@ public sealed class InProcessSqliteTransport : ISqliteTransport
             }
 
             rows.Add(row);
+        }
+
+        // Remaining statements in the text still have to run, as they do in the worker.
+        while (reader.NextResult())
+        {
         }
 
         return new SqliteCommandResult

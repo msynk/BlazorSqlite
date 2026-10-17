@@ -5,7 +5,13 @@ const DEFAULT_WORKER_URL = new URL('./blazor-sqlite-worker.js', import.meta.url)
 
 // Re-exported so a JavaScript caller can work in plain values without importing the wire module and
 // without inventing a second, divergent encoding. The .NET transport does the same work in C#.
-export { decodeValue, encodeValue, WireType } from './blazor-sqlite-wire.js';
+export {
+  decodeReplyBinary,
+  decodeValue,
+  encodeBatchBinary,
+  encodeValue,
+  WireType,
+} from './blazor-sqlite-wire.js';
 
 /**
  * Starts a worker for one database.
@@ -15,12 +21,14 @@ export { decodeValue, encodeValue, WireType } from './blazor-sqlite-wire.js';
  * @param {string} options.requiredBuild `'synchronous'` or `'asyncCapable'`
  * @param {{moduleUrl: string, registerExport?: string}} [options.vfs]
  * @param {{supportsMultiDatabaseTransactions?: boolean, canChangePageSize?: boolean}} [options.limits]
+ * @param {string[]} [options.onOpenSql] configuration statements run once the database is open
+ * @param {{moduleUrl: string, registerExport?: string}[]} [options.extensions] function/collation modules
  * @param {string} [options.workerUrl] overridable so an application can host the worker itself
  * @returns {Promise<SqliteHost>}
  */
-export async function open({ databaseName, requiredBuild, vfs, limits, workerUrl }) {
+export async function open({ databaseName, requiredBuild, vfs, limits, onOpenSql, extensions, workerUrl }) {
   const host = createHost(workerUrl);
-  await host.send({ kind: 'open', databaseName, requiredBuild, vfs, limits });
+  await host.send({ kind: 'open', databaseName, requiredBuild, vfs, limits, onOpenSql, extensions });
   return host;
 }
 
@@ -46,6 +54,7 @@ class SqliteHost {
   #disposed = false;
   #listeners = new Set();
   #channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(CHANGE_CHANNEL) : null;
+  #databaseName = null;
 
   constructor(workerUrl) {
     this.#worker = new Worker(workerUrl, { type: 'module' });
@@ -57,9 +66,39 @@ class SqliteHost {
       new Error(`The SQLite worker failed: ${event.message ?? 'unknown error'}`)));
   }
 
+  /**
+   * Subscribes to table-change notifications. The listener receives the payload and a second
+   * argument saying whether the write happened in this host (`local: true`) or arrived from
+   * another tab over the broadcast channel (`local: false`).
+   *
+   * @param {(payload: {kind: 'notify', databaseName: string, tables: string[]}, origin: {local: boolean}) => void} listener
+   * @returns {() => void} unsubscribe
+   */
   onNotify(listener) {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  /**
+   * Forwards cross-tab notifications for this host's database to a .NET object.
+   *
+   * Local writes are not forwarded: the .NET connection already learns about those from the
+   * execute reply, synchronously and in order, and a second asynchronous notification would only
+   * re-run every live query twice.
+   *
+   * @param {{invokeMethodAsync(method: string, ...args: unknown[]): Promise<unknown>}} dotNetObject
+   * @param {string} methodName a `[JSInvokable]` method taking `string[] tables`
+   */
+  subscribeDotNet(dotNetObject, methodName) {
+    return this.onNotify((payload, { local }) => {
+      if (local || (this.#databaseName !== null && payload.databaseName !== this.#databaseName)) {
+        return;
+      }
+
+      dotNetObject.invokeMethodAsync(methodName, payload.tables).catch(() => {
+        // The .NET side may be disposing; a dropped notification is not an error worth surfacing.
+      });
+    });
   }
 
   #emit(payload, { local }) {
@@ -72,7 +111,11 @@ class SqliteHost {
     }
 
     for (const listener of this.#listeners) {
-      listener(payload);
+      try {
+        listener(payload, { local });
+      } catch (error) {
+        console.error('A BlazorSqlite change listener threw.', error);
+      }
     }
   }
 
@@ -104,26 +147,50 @@ class SqliteHost {
     this.#pending.clear();
   }
 
-  send(request) {
+  /**
+   * @param {object} request
+   * @param {Transferable[]} [transfer] buffers to move rather than copy into the worker
+   */
+  send(request, transfer) {
     if (this.#disposed) {
       return Promise.reject(new Error('This SQLite host has been disposed.'));
+    }
+
+    if (request.kind === 'open' && typeof request.databaseName === 'string') {
+      this.#databaseName = request.databaseName;
     }
 
     const id = this.#nextId++;
 
     return new Promise((resolve, reject) => {
       this.#pending.set(id, { resolve, reject });
-      this.#worker.postMessage({ ...request, id });
+      this.#worker.postMessage({ ...request, id }, transfer ?? []);
     });
   }
 
   /**
-   * Executes a batch in one round trip.
+   * Executes a batch in one round trip, with tagged rows in the reply.
    *
-   * @param {ReadonlyArray<{commandText: string, parameters?: ReadonlyArray<{name: string, value: unknown}>, resultKind?: 'nonQuery'|'scalar'|'reader'}>} batch
+   * @param {ReadonlyArray<{commandText: string, parameters?: ReadonlyArray<{name: string, type: number, value: unknown}>, resultKind?: 'nonQuery'|'scalar'|'reader', maxRows?: number}>} batch
    */
   execute(batch) {
     return this.send({ kind: 'execute', batch });
+  }
+
+  /**
+   * Executes a binary-encoded batch and returns the binary reply, transferring both buffers so
+   * neither is copied. Never rejects for a SQL failure: the reply carries it.
+   *
+   * @param {Uint8Array} batch encoded by `encodeBatchBinary` or by `SqliteWireFormat` on the .NET side
+   * @returns {Promise<Uint8Array>}
+   */
+  async executeBinary(batch) {
+    const bytes = batch instanceof Uint8Array ? batch : new Uint8Array(batch);
+    const transferable = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+      ? [bytes.buffer]
+      : [];
+    const reply = await this.send({ kind: 'executeBinary', batch: bytes }, transferable);
+    return reply instanceof Uint8Array ? reply : new Uint8Array(reply);
   }
 
   /**
@@ -153,6 +220,16 @@ class SqliteHost {
     return this.send({ kind: 'version' });
   }
 
+  /**
+   * A consistent snapshot of the open database as a SQLite file image.
+   *
+   * @param {string} [schema] `'main'` unless an attached database is wanted
+   * @returns {Promise<Uint8Array>}
+   */
+  export(schema = 'main') {
+    return this.send({ kind: 'serialize', schema });
+  }
+
   async close() {
     await this.send({ kind: 'close' });
   }
@@ -168,6 +245,7 @@ class SqliteHost {
 
     this.#disposed = true;
     this.#failAll(new Error('The SQLite host was disposed while the request was in flight.'));
+    this.#listeners.clear();
     this.#channel?.close();
     this.#worker.terminate();
   }
