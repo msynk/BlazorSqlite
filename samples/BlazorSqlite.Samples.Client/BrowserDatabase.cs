@@ -24,8 +24,8 @@ public sealed class BrowserDatabase(
     BlazorSqliteDatabase database,
     IBlazorSqliteDbContextFactory<AppDbContext> contexts,
     IEnumerable<IBlazorSqliteStorageProvider> providers,
-    IStorageBindingStore bindings,
-    StorageMigrator migrator)
+    IBlazorSqliteStorageBindingStore bindings,
+    BlazorSqliteStorageMigrator migrator)
 {
     public const string DatabaseName = "app.db";
 
@@ -33,11 +33,11 @@ public sealed class BrowserDatabase(
 
     public IReadOnlyList<IBlazorSqliteStorageProvider> Providers { get; } = [.. providers];
 
-    public IStorageBindingStore Bindings { get; } = bindings;
+    public IBlazorSqliteStorageBindingStore Bindings { get; } = bindings;
 
     public BlazorSqliteSession? Session => Database.Session;
 
-    public StorageResolution? Resolution => Database.Resolution;
+    public BlazorSqliteStorageResolution? Resolution => Database.Resolution;
 
     public BlazorSqliteConnection? Connection => Database.Connection;
 

@@ -14,7 +14,7 @@ public sealed class ConformanceKitTests
     /// Runs the kit's assertions against a chosen provider. Private, so the kit's inherited tests are
     /// not collected a second time from here.
     /// </summary>
-    private sealed class Harness(IBlazorSqliteStorageProvider provider) : StorageProviderConformanceTests
+    private sealed class Harness(IBlazorSqliteStorageProvider provider) : BlazorSqliteStorageProviderConformanceTests
     {
         protected override IBlazorSqliteStorageProvider CreateProvider() => provider;
     }

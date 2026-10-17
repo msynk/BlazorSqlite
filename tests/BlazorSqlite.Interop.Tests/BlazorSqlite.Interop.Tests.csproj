@@ -11,10 +11,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\BlazorSqlite.Interop\BlazorSqlite.Interop.csproj" />
+    <ProjectReference Include="..\..\src\BlazorSqlite\BlazorSqlite.csproj" />
     <ProjectReference Include="..\..\src\BlazorSqlite.Testing\BlazorSqlite.Testing.csproj" />
-    <ProjectReference Include="..\..\src\BlazorSqlite.Storage.ConformanceTests\BlazorSqlite.Storage.ConformanceTests.csproj" />
-    <ProjectReference Include="..\..\src\BlazorSqlite.Storage.InMemory\BlazorSqlite.Storage.InMemory.csproj" />
   </ItemGroup>
 
 </Project>

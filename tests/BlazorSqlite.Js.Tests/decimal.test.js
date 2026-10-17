@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Decimal } from '../../src/BlazorSqlite.Js/wwwroot/blazor-sqlite-decimal.js';
+import { Decimal } from '../../src/BlazorSqlite/wwwroot/blazor-sqlite-decimal.js';
 
 const values = ['0', '10', '9', '-5', '2.5', '0.1', '100', '-0.25', '1234.5678', '3'];
 const optional = [null, '10', null, '-5', '2.5', null, '100', '-0.25', '1234.5678', '3'];
@@ -19,6 +19,20 @@ test('ToString keeps the scale, including trailing zeros', () => {
   assert.equal(parse('-0').toString(), '0');
 });
 
+// The oracle is Microsoft.Data.Sqlite's `0.0###########################`, which is the form EF
+// renders decimal literals in and therefore the only form its `=` comparisons match.
+test('toSqlText writes the canonical form the SQLite stack stores', () => {
+  assert.equal(parse('10').toSqlText(), '10.0');
+  assert.equal(parse('1.50').toSqlText(), '1.5');
+  assert.equal(parse('100.000').toSqlText(), '100.0');
+  assert.equal(parse('0').toSqlText(), '0.0');
+  assert.equal(parse('-3').toSqlText(), '-3.0');
+  assert.equal(parse('12.34').toSqlText(), '12.34');
+  assert.equal(parse('-0.25').toSqlText(), '-0.25');
+  assert.equal(parse('1').divide(parse('3')).toSqlText(), '0.3333333333333333333333333333');
+  assert.equal(parse('2.5').add(parse('1.5')).toSqlText(), '4.0');
+});
+
 test('add matches the S4 oracle', () => {
   assert.deepEqual(
     map(values, v => v.add(parse('1.5'))),
@@ -35,6 +49,26 @@ test('multiply matches the S4 oracle', () => {
   assert.deepEqual(
     map(values, v => v.multiply(parse('3'))),
     ['0', '30', '27', '-15', '7.5', '0.3', '300', '-0.75', '3703.7034', '9']);
+});
+
+// When a product has more than 28 decimals, every surplus digit is dropped at once and the whole
+// remainder decides the rounding, as System.Decimal does. Rounding digit by digit gets `…51` wrong:
+// 1 is below half, then 5 ties to even, and 0.51 rounds down instead of up. Oracle: .NET 10.
+test('multiply drops surplus digits with one rounding, not one per digit', () => {
+  const tiny = parse('0.0000000000000000000000000001');
+  const cases = [
+    ['0.51', '0.0000000000000000000000000001'],
+    ['0.49', '0.0000000000000000000000000000'],
+    ['1.50', '0.0000000000000000000000000002'],
+    ['2.50', '0.0000000000000000000000000002'],
+  ];
+  assert.deepEqual(
+    cases.map(([factor]) => tiny.multiply(parse(factor)).toString()),
+    cases.map(([, expected]) => expected));
+
+  const three = parse('0.0000000000000000000000000003');
+  assert.equal(three.multiply(parse('1.51')).toString(), '0.0000000000000000000000000005');
+  assert.equal(three.multiply(parse('1.50')).toString(), '0.0000000000000000000000000004');
 });
 
 test('divide matches the S4 oracle', () => {

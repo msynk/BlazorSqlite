@@ -1,10 +1,18 @@
 import { expect, test } from '@playwright/test';
-import { exec, execute, executeExpectingFailure, openHost, query } from './host.js';
+import {
+  exec,
+  execute,
+  executeExpectingFailure,
+  notifications,
+  openHost,
+  query,
+  recordNotifications,
+} from './host.js';
 
 /**
  * Behaviours of the worker's engine loop that the .NET layer relies on: the statement cache, the
- * engine-reported change set, accurate affected-row counts, open-time configuration, extension
- * modules, and in-place snapshots.
+ * engine-reported change notifications, accurate affected-row counts, open-time configuration,
+ * extension modules, and in-place snapshots.
  */
 test.describe('statement cache', () => {
   test.beforeEach(async ({ page }) => {
@@ -62,29 +70,56 @@ test.describe('statement cache', () => {
 
 test.describe('engine-reported changes', () => {
   test.beforeEach(async ({ page }) => {
-    await openHost(page, { databaseName: `changes-${Date.now()}`, onOpenSql: ['PRAGMA foreign_keys = ON'] });
+    await openHost(page, { databaseName: `changes-${Date.now()}` });
     await exec(page, 'CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT)');
     await exec(page, 'CREATE TABLE line (id INTEGER PRIMARY KEY, product_id INTEGER REFERENCES product(id) ON DELETE CASCADE)');
+    await recordNotifications(page);
   });
 
   test('a write names the tables it changed, including through a cascade', async ({ page }) => {
     await exec(page, "INSERT INTO product (name) VALUES ('A')");
     await exec(page, 'INSERT INTO line (product_id) VALUES (1)');
+    await notifications(page);
 
-    const result = await exec(page, 'DELETE FROM product WHERE id = 1');
+    await exec(page, 'DELETE FROM product WHERE id = 1');
 
-    expect(result.changedTables.sort()).toEqual(['line', 'product']);
+    expect(await notifications(page)).toEqual([['line', 'product']]);
   });
 
   test('a read and a write that changed nothing report no tables', async ({ page }) => {
-    expect((await query(page, 'SELECT * FROM product')).changedTables).toEqual([]);
-    expect((await exec(page, 'DELETE FROM product WHERE id = 42')).changedTables).toEqual([]);
+    await query(page, 'SELECT * FROM product');
+    await exec(page, 'DELETE FROM product WHERE id = 42');
+
+    expect(await notifications(page)).toEqual([]);
+  });
+
+  test('a truncating DELETE, which the update hook does not see, is still reported', async ({ page }) => {
+    await exec(page, "INSERT INTO product (name) VALUES ('A')");
+    await notifications(page);
+
+    await exec(page, 'DELETE FROM line');
+    await exec(page, 'DELETE FROM product');
+
+    expect(await notifications(page)).toEqual([['product']]);
   });
 
   test('DDL names the table it touched', async ({ page }) => {
-    const result = await exec(page, 'CREATE TABLE extra (id INTEGER PRIMARY KEY)');
+    await exec(page, 'CREATE TABLE extra (id INTEGER PRIMARY KEY)');
 
-    expect(result.changedTables).toEqual(['extra']);
+    expect(await notifications(page)).toEqual([['extra']]);
+  });
+
+  test('nothing is reported until the transaction commits, and nothing at all on rollback', async ({ page }) => {
+    await exec(page, 'BEGIN');
+    await exec(page, "INSERT INTO product (name) VALUES ('A')");
+    expect(await notifications(page)).toEqual([]);
+    await exec(page, 'COMMIT');
+    expect(await notifications(page)).toEqual([['product']]);
+
+    await exec(page, 'BEGIN');
+    await exec(page, "INSERT INTO product (name) VALUES ('B')");
+    await exec(page, 'ROLLBACK');
+    expect(await notifications(page)).toEqual([]);
   });
 
   test('the cascade also reaches the notification channel', async ({ page }) => {
@@ -144,8 +179,8 @@ test.describe('counters', () => {
 });
 
 test.describe('open-time configuration', () => {
-  test('foreign keys are enforced when the transport asks for it', async ({ page }) => {
-    await openHost(page, { databaseName: `fk-${Date.now()}`, onOpenSql: ['PRAGMA foreign_keys = ON'] });
+  test('foreign keys are enforced by default', async ({ page }) => {
+    await openHost(page, { databaseName: `fk-${Date.now()}` });
     await exec(page, 'CREATE TABLE parent (id INTEGER PRIMARY KEY)');
     await exec(page, 'CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id))');
 
@@ -156,8 +191,14 @@ test.describe('open-time configuration', () => {
     expect((await query(page, 'PRAGMA foreign_keys')).rows).toEqual([[1]]);
   });
 
-  test('foreign keys are off in the raw engine, which is why the transport turns them on', async ({ page }) => {
-    await openHost(page, { databaseName: `nofk-${Date.now()}` });
+  test('foreign keys stay off when the caller opts out', async ({ page }) => {
+    await openHost(page, { databaseName: `nofk-${Date.now()}`, foreignKeys: false });
+
+    expect((await query(page, 'PRAGMA foreign_keys')).rows).toEqual([[0]]);
+  });
+
+  test('open-time statements run after the defaults', async ({ page }) => {
+    await openHost(page, { databaseName: `onopen-${Date.now()}`, onOpenSql: ['PRAGMA foreign_keys = OFF'] });
 
     expect((await query(page, 'PRAGMA foreign_keys')).rows).toEqual([[0]]);
   });

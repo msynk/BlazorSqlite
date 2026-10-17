@@ -19,26 +19,26 @@ public sealed class FirstPartyProviderContractTests
     [Fact]
     public void FirstPartyNames_AreTheOnesSelectionAlreadyUses()
     {
-        Assert.Equal("in-memory", new InMemoryStorageProvider().Name);
-        Assert.Equal("opfs", new OpfsStorageProvider().Name);
-        Assert.Equal("indexeddb", new IndexedDbStorageProvider().Name);
-        Assert.Equal("cache-storage", new CacheStorageProvider().Name);
+        Assert.Equal("in-memory", new BlazorSqliteInMemoryStorageProvider().Name);
+        Assert.Equal("opfs", new BlazorSqliteOpfsStorageProvider().Name);
+        Assert.Equal("indexeddb", new BlazorSqliteIndexedDbStorageProvider().Name);
+        Assert.Equal("cache-storage", new BlazorSqliteCacheStorageProvider().Name);
     }
 
     [Fact]
     public void PersistentProviders_DoNotShareAName()
     {
-        Assert.NotEqual(new OpfsStorageProvider().Name, new IndexedDbStorageProvider().Name);
+        Assert.NotEqual(new BlazorSqliteOpfsStorageProvider().Name, new BlazorSqliteIndexedDbStorageProvider().Name);
     }
 
     [Fact]
     public async Task BoundToIndexedDb_DoesNotOpenOpfs_WhenIndexedDbCannotBeProbed()
     {
-        var store = new InMemoryStorageBindingStore();
+        var store = new BlazorSqliteInMemoryStorageBindingStore();
         await store.SetProviderNameAsync("app.db", "indexeddb", Ct);
 
-        var resolver = new StorageProviderResolver(
-            [new OpfsStorageProvider(), new IndexedDbStorageProvider()],
+        var resolver = new BlazorSqliteStorageProviderResolver(
+            [new BlazorSqliteOpfsStorageProvider(), new BlazorSqliteIndexedDbStorageProvider()],
             store);
 
         var failure = await Assert.ThrowsAsync<BlazorSqliteStorageUnavailableException>(
@@ -57,11 +57,11 @@ public sealed class FirstPartyProviderContractTests
     [Fact]
     public async Task BoundToOpfs_DoesNotOpenIndexedDb_WhenOpfsCannotBeProbed()
     {
-        var store = new InMemoryStorageBindingStore();
+        var store = new BlazorSqliteInMemoryStorageBindingStore();
         await store.SetProviderNameAsync("app.db", "opfs", Ct);
 
-        var resolver = new StorageProviderResolver(
-            [new OpfsStorageProvider(), new IndexedDbStorageProvider()],
+        var resolver = new BlazorSqliteStorageProviderResolver(
+            [new BlazorSqliteOpfsStorageProvider(), new BlazorSqliteIndexedDbStorageProvider()],
             store);
 
         var failure = await Assert.ThrowsAsync<BlazorSqliteStorageUnavailableException>(

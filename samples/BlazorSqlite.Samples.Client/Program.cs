@@ -20,15 +20,15 @@ builder.Services.AddScoped(sp => new HttpClient
 // shared database. Existing data outranks preference: a file created on IndexedDB stays there
 // even once OPFS becomes available, unless the application migrates it deliberately.
 builder.Services.AddBlazorSqlite(sqlite => sqlite
-    .AddStorageProvider<OpfsStorageProvider>()
-    .AddStorageProvider<IndexedDbStorageProvider>()
-    .AddStorageProvider<CacheStorageProvider>()
-    .AddStorageProvider<InMemoryStorageProvider>()
+    .AddStorageProvider<BlazorSqliteOpfsStorageProvider>()
+    .AddStorageProvider<BlazorSqliteIndexedDbStorageProvider>()
+    .AddStorageProvider<BlazorSqliteCacheStorageProvider>()
+    .AddStorageProvider<BlazorSqliteInMemoryStorageProvider>()
     .UseStorage(s => s
-        .Prefer(OpfsStorageProvider.ProviderName)
-        .Fallback(IndexedDbStorageProvider.ProviderName)
-        .Fallback(CacheStorageProvider.ProviderName)
-        .Fallback(InMemoryStorageProvider.ProviderName)
+        .Prefer(BlazorSqliteOpfsStorageProvider.ProviderName)
+        .Fallback(BlazorSqliteIndexedDbStorageProvider.ProviderName)
+        .Fallback(BlazorSqliteCacheStorageProvider.ProviderName)
+        .Fallback(BlazorSqliteInMemoryStorageProvider.ProviderName)
         .AllowNonPersistentFallback())
     .AddDatabase(BrowserDatabase.DatabaseName));
 

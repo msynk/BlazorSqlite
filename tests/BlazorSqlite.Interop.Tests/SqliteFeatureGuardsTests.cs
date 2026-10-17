@@ -12,7 +12,7 @@ public sealed class SqliteFeatureGuardsTests
     [InlineData("PRAGMA journal_mode=\"WAL\"")]
     public void RejectsWalInAnyReasonableSpelling(string sql)
     {
-        var error = Assert.Throws<BlazorSqliteException>(() => SqliteFeatureGuards.EnsureSupported(sql));
+        var error = Assert.Throws<BlazorSqliteException>(() => BlazorSqliteFeatureGuards.EnsureSupported(sql));
 
         Assert.Contains("WAL", error.Message);
     }
@@ -25,15 +25,15 @@ public sealed class SqliteFeatureGuardsTests
     [InlineData("ATTACH 'other.db' AS other")]
     [InlineData("PRAGMA page_size=4096")]
     public void DoesNotRejectUnrelatedSql(string sql)
-        => SqliteFeatureGuards.EnsureSupported(sql);
+        => BlazorSqliteFeatureGuards.EnsureSupported(sql);
 
     [Theory]
     [InlineData("ATTACH 'other.db' AS other")]
     [InlineData("attach database 'other.db' as other")]
     public void RejectsAttach_WhenTheBackendCannotSpanDatabases(string sql)
     {
-        var limits = SqliteRuntimeLimits.Unrestricted with { SupportsMultiDatabaseTransactions = false };
-        var error = Assert.Throws<BlazorSqliteException>(() => SqliteFeatureGuards.EnsureSupported(sql, limits));
+        var limits = BlazorSqliteRuntimeLimits.Unrestricted with { SupportsMultiDatabaseTransactions = false };
+        var error = Assert.Throws<BlazorSqliteException>(() => BlazorSqliteFeatureGuards.EnsureSupported(sql, limits));
 
         Assert.Contains("ATTACH", error.Message);
     }
@@ -41,9 +41,9 @@ public sealed class SqliteFeatureGuardsTests
     [Fact]
     public void RejectsPageSizeAssignment_WhenTheBackendPinsThePageSize()
     {
-        var limits = SqliteRuntimeLimits.Unrestricted with { CanChangePageSize = false };
+        var limits = BlazorSqliteRuntimeLimits.Unrestricted with { CanChangePageSize = false };
         var error = Assert.Throws<BlazorSqliteException>(
-            () => SqliteFeatureGuards.EnsureSupported("PRAGMA page_size=8192", limits));
+            () => BlazorSqliteFeatureGuards.EnsureSupported("PRAGMA page_size=8192", limits));
 
         Assert.Contains("page_size", error.Message);
     }
@@ -54,12 +54,12 @@ public sealed class SqliteFeatureGuardsTests
     [InlineData("PRAGMA page_size")]
     public void DoesNotFalsePositive_OnAttachOrPageSizeWords(string sql)
     {
-        var limits = new SqliteRuntimeLimits
+        var limits = new BlazorSqliteRuntimeLimits
         {
             SupportsMultiDatabaseTransactions = false,
             CanChangePageSize = false,
         };
 
-        SqliteFeatureGuards.EnsureSupported(sql, limits);
+        BlazorSqliteFeatureGuards.EnsureSupported(sql, limits);
     }
 }

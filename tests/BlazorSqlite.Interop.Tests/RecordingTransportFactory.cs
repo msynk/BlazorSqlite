@@ -7,7 +7,7 @@ namespace BlazorSqlite.Interop.Tests;
 /// Hands out scripted transports and remembers which provider each one was created for, so a test
 /// can see that the factory asked for the backend selection actually chose.
 /// </summary>
-internal sealed class RecordingTransportFactory : ISqliteTransportFactory
+internal sealed class RecordingTransportFactory : IBlazorSqliteTransportFactory
 {
     private readonly Func<ScriptedTransport> _create;
 
@@ -21,7 +21,7 @@ internal sealed class RecordingTransportFactory : ISqliteTransportFactory
             ? Created[^1].Transport
             : throw new InvalidOperationException("No transport has been created.");
 
-    public ISqliteTransport Create(IBlazorSqliteStorageProvider provider)
+    public IBlazorSqliteTransport Create(IBlazorSqliteStorageProvider provider)
     {
         var transport = _create();
         Created.Add((provider, transport));
@@ -29,8 +29,8 @@ internal sealed class RecordingTransportFactory : ISqliteTransportFactory
     }
 }
 
-/// <summary>An <see cref="ISqliteTransport"/> whose open can be told to fail.</summary>
-internal sealed class ScriptedTransport : ISqliteTransport
+/// <summary>An <see cref="IBlazorSqliteTransport"/> whose open can be told to fail.</summary>
+internal sealed class ScriptedTransport : IBlazorSqliteTransport
 {
     public string? OpenedAs { get; private set; }
 
@@ -55,10 +55,10 @@ internal sealed class ScriptedTransport : ISqliteTransport
 
     public Task CloseAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public Task<IReadOnlyList<SqliteCommandResult>> ExecuteAsync(
-        IReadOnlyList<SqliteCommandRequest> batch,
+    public Task<IReadOnlyList<BlazorSqliteCommandResult>> ExecuteAsync(
+        IReadOnlyList<BlazorSqliteCommandRequest> batch,
         CancellationToken cancellationToken = default)
-        => Task.FromResult<IReadOnlyList<SqliteCommandResult>>([]);
+        => Task.FromResult<IReadOnlyList<BlazorSqliteCommandResult>>([]);
 
     public ValueTask DisposeAsync()
     {

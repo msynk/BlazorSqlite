@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { exec, openHost, query } from './host.js';
+import { exec, openHost, query, skipUnlessOpfs } from './host.js';
 
 const OPFS = {
   requiredBuild: 'synchronous',
@@ -23,6 +23,9 @@ const IDB = {
  * success and lose the rows.
  */
 test.describe('storage isolation', () => {
+  // Both directions involve OPFS, which Playwright's WebKit does not have.
+  test.beforeEach(({ page }) => skipUnlessOpfs(page));
+
   test('an IndexedDB write is invisible on OPFS under the same name', async ({ page }) => {
     const databaseName = `iso-idb-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 

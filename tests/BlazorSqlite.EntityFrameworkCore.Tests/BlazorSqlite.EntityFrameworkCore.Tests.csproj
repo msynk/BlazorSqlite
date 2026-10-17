@@ -12,9 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\BlazorSqlite.EntityFrameworkCore\BlazorSqlite.EntityFrameworkCore.csproj" />
-    <ProjectReference Include="..\..\src\BlazorSqlite.Interop\BlazorSqlite.Interop.csproj" />
-    <ProjectReference Include="..\..\src\BlazorSqlite.Storage.InMemory\BlazorSqlite.Storage.InMemory.csproj" />
+    <ProjectReference Include="..\..\src\BlazorSqlite\BlazorSqlite.csproj" />
     <ProjectReference Include="..\..\src\BlazorSqlite.Testing\BlazorSqlite.Testing.csproj" />
     <ProjectReference Include="..\..\samples\BlazorSqlite.Samples.Data\BlazorSqlite.Samples.Data.csproj" />
   </ItemGroup>

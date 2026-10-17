@@ -4,8 +4,8 @@ using BlazorSqlite.Storage.ConformanceTests;
 
 namespace BlazorSqlite.Storage.Tests;
 
-public sealed class CacheStorageConformanceTests : StorageProviderConformanceTests
+public sealed class CacheStorageConformanceTests : BlazorSqliteStorageProviderConformanceTests
 {
     /// <inheritdoc />
-    protected override IBlazorSqliteStorageProvider CreateProvider() => new CacheStorageProvider();
+    protected override IBlazorSqliteStorageProvider CreateProvider() => new BlazorSqliteCacheStorageProvider();
 }

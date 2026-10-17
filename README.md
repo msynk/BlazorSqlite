@@ -7,8 +7,8 @@ SQLite in the browser for Blazor WebAssembly, with EF Core on top. The same enti
 ```csharp
 // Program.cs
 builder.Services.AddBlazorSqlite(sqlite => sqlite
-    .AddStorageProvider<OpfsStorageProvider>()
-    .AddStorageProvider<IndexedDbStorageProvider>()
+    .AddStorageProvider<BlazorSqliteOpfsStorageProvider>()
+    .AddStorageProvider<BlazorSqliteIndexedDbStorageProvider>()
     .UseStorage(s => s.Prefer("opfs").Fallback("indexeddb"))
     .AddDatabase("app.db"));
 
@@ -33,17 +33,11 @@ var open = await db.Orders.Where(o => o.Status == OrderStatus.Open).ToListAsync(
 
 | Package | Role |
 |---|---|
-| `BlazorSqlite.EntityFrameworkCore` | `UseBlazorSqlite`, `AddBlazorSqliteDbContext`, async-safe migrations |
-| `BlazorSqlite.Interop` | `AddBlazorSqlite`, session factory, worker transport, selection, migration |
-| `BlazorSqlite.Data` | ADO.NET surface and live queries, transport-agnostic |
-| `BlazorSqlite.Js` | The worker, the engine builds, and the JavaScript API |
-| `BlazorSqlite.Storage.Abstractions` | The storage provider contract |
-| `BlazorSqlite.Storage.Opfs` | Persistent, synchronous engine, multi-connection |
+| `BlazorSqlite` | `AddBlazorSqlite`, `AddBlazorSqliteDbContext`, `UseBlazorSqlite(connection)`, ADO.NET + live queries, worker transport, selection and migration, the storage provider contract, the in-memory backend, and the browser assets (engine, worker, host) under `_content/BlazorSqlite` |
+| `BlazorSqlite.Storage.Opfs` | Persistent, sync engine, multi-connection |
 | `BlazorSqlite.Storage.IndexedDb` | Persistent, JSPI/Asyncify, widest reach |
 | `BlazorSqlite.Storage.CacheStorage` | Persistent, besql migration path |
-| `BlazorSqlite.Storage.InMemory` | Volatile reference backend |
-| `BlazorSqlite.Storage.ConformanceTests` | The suite every provider must pass |
-| `BlazorSqlite.Testing` | In-process transport for desktop tests |
+| `BlazorSqlite.Testing` | In-process transport for browser-free unit tests, plus the conformance kit every storage provider must pass |
 
 ## Documentation
 
@@ -62,9 +56,46 @@ var open = await db.Orders.Where(o => o.Status == OrderStatus.Open).ToListAsync(
 dotnet run --project samples/BlazorSqlite.Samples.Server
 ```
 
+## Composition
+
+`AddBlazorSqlite` registers everything above. Without dependency injection, the same pieces compose by
+hand:
+
+```csharp
+var session = await factory.OpenAsync("app.db");   // a BlazorSqliteSessionFactory
+options.UseBlazorSqlite(session.Connection);
+```
+
+Selection is sticky: existing data outranks preference. `BlazorSqliteStorageMigrationMode.AutomaticOnOpen` copies, checks the SQLite header, then flips the binding. `KeepExisting` is the default.
+
+## Live queries
+
+Table-level. A committed write re-runs any live query that reads that table, including across tabs.
+The worker learns what changed from SQLite's own update hook - cascades and triggers included - and
+reports it once the transaction commits, so a rolled-back write is never shown and a multi-statement
+`SaveChangesAsync` re-runs a query once, not per statement.
+
+```csharp
+await using var live = ctx.Orders.Where(o => o.Open).AsLiveQuery();
+live.Changed += (_, rows) => InvokeAsync(StateHasChanged);
+```
+
+## What this release does not claim
+
+- A synchronous tier (`SaveChanges()`, `ToList()`). Synchronous members throw `BlazorSqliteSynchronousApiNotSupportedException` naming the async overload.
+- WAL journal mode. No web VFS can provide the shared memory it needs.
+- Server synchronization. The sample's two sides share a model, not data.
+- Arch 2 (`BlazorSqlite.Strict`) - slipped post-1.0. Browsers forbid `Atomics.wait` on the main thread; a spin-wait would freeze the UI; multithreaded WASM is not Blazor's default.
+- Firefox/Safari locally - Playwright's CDN has been geo-blocked here; Chrome/Edge use installed browsers instead. Set `BLAZORSQLITE_BROWSERS=all` after `playwright install` to add the other two. CI runs all four.
+- Soak and §2 latency numbers are not CI gates. The soak suite exists (`npm run soak`) but is opt-in; the benchmark numbers are still a manual read.
+- `in-memory` has no admin view of live data. It registers no VFS, so a database opened on it lives in the engine's own heap inside the worker; `Admin` describes only images passed to it directly. Export, list, and migration away from this backend do not see what a connection wrote. Persistent backends do not have this gap.
+- `indexeddb` serializes readers. `IDBBatchAtomicVFS` is registered with `WebLocksMixin`'s default `exclusive` lock policy, so a read holds the same lock a write does. `SupportsConcurrentReads` reports that honestly.
+
 ## Tests
 
-Run the Microsoft.Testing.Platform executables directly rather than `dotnet test`:
+Restore first: the wa-sqlite engine and the upstream VFS files are vendored at restore, verified against
+the checksums in the `*.lock.props` files, and gitignored. Do not rely on `dotnet test` (MTP has
+reported “Zero tests ran”). Run the test exe:
 
 ```
 dotnet build BlazorSqlite.slnx
@@ -74,22 +105,45 @@ dotnet build BlazorSqlite.slnx
 node --test tests/BlazorSqlite.Js.Tests/*.test.js
 ```
 
-Browser tests run against real engines with Playwright, using installed Chrome and Edge by default:
+Browser: `npx playwright test --project=chrome` from `tests/BlazorSqlite.Browser.Tests`. `npm run test:all` adds Firefox and WebKit, which need `npm run install-browsers` first. `BLAZORSQLITE_TEST_PORT` moves the test server off 5199 when something else holds it - and check that first when every test times out on page load, since Playwright reuses whatever is already answering on the port. The server also mirrors the whole layout under `/nested/`, which is how the sub-path tests prove that no library URL is root-relative.
 
-```
-cd tests/BlazorSqlite.Browser.Tests
-npm ci
-npx playwright test --project=chrome
-```
+JavaScript units: `node --test "tests/BlazorSqlite.Js.Tests/*.test.js"`.
 
-Set `BLAZORSQLITE_BROWSERS=all` after `npx playwright install` to add Firefox and WebKit, which exercise the Asyncify build.
+## Soak
+
+`npm run soak` from `tests/BlazorSqlite.Browser.Tests`. Tagged `@soak` and skipped by an ordinary run, since it takes minutes: per storage, a worker killed mid-transaction 1000 times, and 4 then 8 tabs committing at once. Each ends on `PRAGMA integrity_check`, so a corrupt file fails the test rather than the next run. Sizes tune through `BLAZORSQLITE_SOAK_KILLS`, `BLAZORSQLITE_SOAK_TABS`, and `BLAZORSQLITE_SOAK_ROWS`.
+
+## CI
+
+`.github/workflows/ci.yml` runs on pushes and pull requests to `main`: the three test executables on Linux and Windows, the JavaScript units, and the browser suite across Chrome, Edge, Firefox, and WebKit. The JavaScript and browser jobs restore the library projects first, because the engine and VFS files they serve are vendored at restore rather than committed. A green run then packs and uploads the five packages as build artifacts. Soak and benchmarks stay manual.
 
 ## Benchmarks
 
-`tests/BlazorSqlite.Benchmarks` is a manual harness. Serve the browser-test server (`node tests/BlazorSqlite.Browser.Tests/server.js`) and open `/benchmarks.html`.
+Open `tests/BlazorSqlite.Benchmarks` with the Playwright test server (or any static host that maps `/_content/...` the same way). Manual, not a CI gate.
 
-## Not in this release
+## Packing
 
-- A synchronous tier (`SaveChanges()`, `ToList()`). The engine runs in a worker and the browser main thread cannot block on it; synchronous members throw `BlazorSqliteSynchronousApiNotSupportedException` naming the async overload.
-- WAL journal mode. No web VFS can provide the shared memory it needs.
-- Server synchronization. The sample's two sides share a model, not data.
+```
+dotnet pack -c Release
+```
+
+Packages and symbols land in `artifacts/packages` (gitignored). Only the five `src/` projects are packable; tests and samples set `IsPackable=false`.
+
+Shared metadata - licence, project and repository URLs, tags, readme wiring, `.snupkg` symbols - lives in the `Packaging` group of `Directory.Build.props`. Each package carries its own `README.md` from its project folder, which is what nuget.org renders.
+
+Version comes from `VersionPrefix` in `Directory.Build.props`. Override per build rather than editing it for a one-off:
+
+```
+dotnet pack -c Release -p:VersionPrefix=0.3.0
+dotnet pack -c Release --version-suffix preview.1     # 0.2.0-preview.1
+```
+
+Set `CI=true` on the build agent. That turns on `ContinuousIntegrationBuild`, which normalises the paths baked into the assemblies; it is deliberately off locally, where it would be wrong. Source stepping works through the SourceLink support built into the SDK - no package reference - so the repository URL and commit are stamped into the nuspec automatically.
+
+Publishing:
+
+```
+dotnet nuget push "artifacts/packages/*.nupkg" -s https://api.nuget.org/v3/index.json -k <key>
+```
+
+The `.snupkg` files go along with them; nuget.org picks them up from the same push.

@@ -8,19 +8,21 @@
 // Values that JSON cannot carry are tagged again on the way out to Playwright, so that "came back as a
 // 64-bit integer" and "came back as a blob" stay observable instead of being silently coerced.
 
+import { test } from '@playwright/test';
+
 /**
  * Loads the host page and opens a database.
  *
  * @returns {Promise<{version: string, build: string}>} what the worker reports about itself
  */
-export async function openHost(page, { databaseName = 'test.db', requiredBuild = 'synchronous', vfs, limits, onOpenSql, extensions } = {}) {
+export async function openHost(page, { databaseName = 'test.db', requiredBuild = 'synchronous', vfs, limits, foreignKeys, onOpenSql, extensions } = {}) {
   await page.goto('/index.html');
   await page.waitForFunction(() => globalThis.BlazorSqliteReady === true);
 
   return await page.evaluate(async options => {
     globalThis.host = await globalThis.BlazorSqlite.host.open(options);
     return await globalThis.host.version();
-  }, { databaseName, requiredBuild, vfs, limits, onOpenSql, extensions });
+  }, { databaseName, requiredBuild, vfs, limits, foreignKeys, onOpenSql, extensions });
 }
 
 /**
@@ -65,10 +67,28 @@ export function execute(page, batch) {
       columnTypes: result.columnTypes,
       recordsAffected: result.recordsAffected,
       lastInsertRowId: Number(result.lastInsertRowId),
-      changedTables: result.changedTables,
       rows: result.rows.map(row => row.v.map((value, i) => forTest(decodeValue(row.t[i], value)))),
     }));
   }, batch);
+}
+
+/**
+ * Starts recording the host's change notifications. Each later call to {@link notifications}
+ * returns the table lists received since the previous one, sorted.
+ *
+ * The worker posts a notification before the reply to the batch that caused it, and the host
+ * handles messages in order, so a notification is recorded by the time that batch's promise settles.
+ */
+export async function recordNotifications(page) {
+  await page.evaluate(() => {
+    globalThis.notified = [];
+    globalThis.host.onNotify(payload => globalThis.notified.push([...payload.tables].sort()));
+  });
+}
+
+/** The notifications recorded since the last call; see {@link recordNotifications}. */
+export function notifications(page) {
+  return page.evaluate(() => globalThis.notified.splice(0));
 }
 
 /** Convenience for the common case of one statement whose rows are wanted. */
@@ -106,4 +126,18 @@ export function executeExpectingFailure(page, batch) {
       return { message: error.message, sqliteCode: error.sqliteCode ?? null, name: error.name };
     }
   }, batch);
+}
+
+/**
+ * Skips the current test where the browser has no OPFS.
+ *
+ * Playwright's own WebKit builds expose no `navigator.storage` at all - not in the window, not in a
+ * worker, secure context notwithstanding - so anything that opens an OPFS database there fails before
+ * SQLite is involved. Safari proper has OPFS; the tests are skipped rather than failed so the suite
+ * still reports on what that WebKit can exercise (IndexedDB, Cache Storage, the engine itself).
+ */
+export async function skipUnlessOpfs(page, path = '/index.html') {
+  await page.goto(path);
+  const available = await page.evaluate(() => typeof navigator.storage?.getDirectory === 'function');
+  test.skip(!available, 'this browser has no navigator.storage.getDirectory, so OPFS cannot be tested');
 }

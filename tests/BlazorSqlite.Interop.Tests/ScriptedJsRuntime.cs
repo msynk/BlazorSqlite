@@ -20,7 +20,7 @@ internal sealed class ScriptedJsRuntime : IJSRuntime
 
     public bool HostDisposed { get; private set; }
 
-    /// <summary>The .NET object and method the host was asked to forward cross-tab notifications to.</summary>
+    /// <summary>The .NET object and method the host module was asked to forward committed writes to.</summary>
     public (object Target, string Method)? Subscription { get; private set; }
 
     public ScriptedJsRuntime()
@@ -70,6 +70,14 @@ internal sealed class ScriptedJsRuntime : IJSRuntime
             return ValueTask.FromResult((TValue)(object)Host);
         }
 
+        // Subscribes the transport to committed writes. Nothing to play back - the recorded call
+        // in Calls, and the target it names, are what the tests assert on.
+        if (objectName == "module" && identifier == "listen")
+        {
+            Subscription = (args![1]!, args.Length > 3 ? (string)args[3]! : "OnTablesChanged");
+            return ValueTask.FromResult(default(TValue)!);
+        }
+
         if (objectName == "host" && identifier is "call" or "executeBinary")
         {
             if (_replies.Count == 0)
@@ -78,12 +86,6 @@ internal sealed class ScriptedJsRuntime : IJSRuntime
             }
 
             return ValueTask.FromResult((TValue)_replies.Dequeue());
-        }
-
-        if (objectName == "host" && identifier == "subscribeDotNet")
-        {
-            Subscription = (args![0]!, (string)args[1]!);
-            return ValueTask.FromResult(default(TValue)!);
         }
 
         if (objectName == "host" && identifier == "dispose")

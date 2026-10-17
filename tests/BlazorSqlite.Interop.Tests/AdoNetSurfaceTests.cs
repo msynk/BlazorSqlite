@@ -16,9 +16,9 @@ public sealed class AdoNetSurfaceTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static async Task<(InProcessSqliteTransport Transport, BlazorSqliteConnection Connection)> OpenAsync()
+    private static async Task<(BlazorSqliteInProcessTransport Transport, BlazorSqliteConnection Connection)> OpenAsync()
     {
-        var transport = new InProcessSqliteTransport();
+        var transport = new BlazorSqliteInProcessTransport();
         var connection = new BlazorSqliteConnection(transport, "ado.db");
         await connection.OpenAsync(Ct);
         await ExecAsync(connection, "CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT NOT NULL)");
@@ -273,7 +273,7 @@ public sealed class AdoNetSurfaceTests
     [Fact]
     public async Task Command_RequiresAnOpenConnection()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "closed.db");
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT 1";
@@ -365,7 +365,7 @@ public sealed class AdoNetSurfaceTests
 
         var refreshes = 0;
         var gate = new SemaphoreSlim(0);
-        await using var live = new LiveQuery<long>(
+        await using var live = new BlazorSqliteLiveQuery<long>(
             connection,
             async ct =>
             {
@@ -399,7 +399,7 @@ public sealed class AdoNetSurfaceTests
         await using var __ = connection;
 
         Exception? failure = null;
-        await using var live = new LiveQuery<int>(
+        await using var live = new BlazorSqliteLiveQuery<int>(
             connection,
             _ => throw new InvalidOperationException("boom"),
             ["product"]);
@@ -422,21 +422,21 @@ public sealed class AdoNetSurfaceTests
         Assert.True(condition());
     }
 
-    private sealed class NotifyingTransport : ISqliteTransport, ISqliteChangeNotifier
+    private sealed class NotifyingTransport : IBlazorSqliteTransport
     {
-        public event EventHandler<SqliteTablesChangedEventArgs>? RemoteTablesChanged;
+        public event EventHandler<BlazorSqliteTablesChangedEventArgs>? TablesChanged;
 
         public void Raise(params string[] tables)
-            => RemoteTablesChanged?.Invoke(this, new SqliteTablesChangedEventArgs(tables));
+            => TablesChanged?.Invoke(this, new BlazorSqliteTablesChangedEventArgs(tables));
 
         public Task OpenAsync(string databaseName, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         public Task CloseAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public Task<IReadOnlyList<SqliteCommandResult>> ExecuteAsync(
-            IReadOnlyList<SqliteCommandRequest> batch,
+        public Task<IReadOnlyList<BlazorSqliteCommandResult>> ExecuteAsync(
+            IReadOnlyList<BlazorSqliteCommandRequest> batch,
             CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<SqliteCommandResult>>([new SqliteCommandResult()]);
+            => Task.FromResult<IReadOnlyList<BlazorSqliteCommandResult>>([new BlazorSqliteCommandResult()]);
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

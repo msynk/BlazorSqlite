@@ -21,21 +21,21 @@ The engine build matters: a VFS that suspends to read storage (IndexedDB, Cache 
     .Fallback("indexeddb")
     .Fallback("in-memory")
     .AllowNonPersistentFallback()
-    .WithMigrationMode(StorageMigrationMode.KeepExisting))
+    .WithMigrationMode(BlazorSqliteStorageMigrationMode.KeepExisting))
 ```
 
 Two rules shape everything:
 
-1. **Existing data outranks preference.** A database created on IndexedDB stays on IndexedDB when OPFS later becomes available. If the backend that holds the data cannot be reached, the open fails rather than producing an empty database elsewhere. The binding is recorded in `IStorageBindingStore` (in `localStorage` by default) only after the open succeeds.
+1. **Existing data outranks preference.** A database created on IndexedDB stays on IndexedDB when OPFS later becomes available. If the backend that holds the data cannot be reached, the open fails rather than producing an empty database elsewhere. The binding is recorded in `IBlazorSqliteStorageBindingStore` (in `localStorage` by default) only after the open succeeds.
 2. **Nothing is substituted silently.** A fallback is logged. Falling back to a non-persistent backend needs `AllowNonPersistentFallback()`. Total failure throws `BlazorSqliteStorageUnavailableException` listing every candidate and why it was rejected.
 
 `session.Resolution` records the decision: the chosen provider, the probe, every attempt, whether it was the first choice, and whether a better backend is available for an existing database.
 
 ## Migration
 
-`StorageMigrationMode.AutomaticOnOpen` moves a database to a better-ranked backend before opening it. `Manual` and `KeepExisting` leave it and report through `Resolution.BetterProviderAvailable`.
+`BlazorSqliteStorageMigrationMode.AutomaticOnOpen` moves a database to a better-ranked backend before opening it. `Manual` and `KeepExisting` leave it and report through `Resolution.BetterProviderAvailable`.
 
-A migration is: probe the target, check quota headroom, export, verify the SQLite header, import, read the copy back and compare it byte for byte, flip the binding, delete the source. A failure at any step leaves the source and the binding untouched. The sample's storage switcher drives the same `StorageMigrator` by hand.
+A migration is: probe the target, check quota headroom, export, verify the SQLite header, import, read the copy back and compare it byte for byte, flip the binding, delete the source. A failure at any step leaves the source and the binding untouched. The sample's storage switcher drives the same `BlazorSqliteStorageMigrator` by hand.
 
 ## Admin
 
@@ -56,7 +56,7 @@ For a backup of a database that stays open, use `connection.ExportAsync()` inste
 ## Writing a provider
 
 1. Implement `IBlazorSqliteStorageProvider`: a stable `Name`, `Capabilities` (which engine build the VFS needs, whether data persists, and the rest), `VfsModule` pointing at an ES module, `Admin`, and `ProbeAsync` that reports unavailability rather than throwing.
-2. Write the VFS against the base classes served from `_content/BlazorSqlite.Js/engine/` (`VFS.js`, `FacadeVFS.js`, `WebLocksMixin.js`). Export `register({ module, sqlite3, databaseName })` returning `{ vfsName, onOpenSql? }`.
-3. Inherit `StorageProviderConformanceTests` and `StorageEngineConformanceTests` from `BlazorSqlite.Storage.ConformanceTests` in your test project. They check that the declared capabilities are coherent and that the admin surface behaves the way migration assumes.
+2. Write the VFS against the base classes served from `_content/BlazorSqlite/engine/` (`VFS.js`, `FacadeVFS.js`, `WebLocksMixin.js`), imported relatively - `../BlazorSqlite/engine/VFS.js` from your package's own `_content` folder - so the application can be served under a sub-path. Export `register({ module, sqlite3, databaseName })` returning `{ vfsName, onOpenSql? }`.
+3. Inherit `BlazorSqliteStorageProviderConformanceTests` and `BlazorSqliteStorageEngineConformanceTests` (namespace `BlazorSqlite.Storage.ConformanceTests`, package `BlazorSqlite.Testing`) in your test project. They check that the declared capabilities are coherent and that the admin surface behaves the way migration assumes.
 
 Capability flags the core enforces for you: `SupportsMultiDatabaseTransactions` gates `ATTACH`, `CanChangePageSize` gates `PRAGMA page_size`, `IsPersistent` gates fallback. Declare the least capable answer when unsure.

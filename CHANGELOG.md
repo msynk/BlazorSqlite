@@ -12,9 +12,9 @@
 ### Correctness
 
 - `PRAGMA foreign_keys = ON` on every open (configurable), matching Microsoft.Data.Sqlite and the server-side EF behaviour.
-- Change tracking from `sqlite3_update_hook`: live queries see triggers and cascades; reads and no-op writes raise nothing.
+- Change tracking from `sqlite3_update_hook` and `sqlite3_commit_hook`: live queries see triggers and cascades, hear about a write only once it commits and never about one that rolls back, and stay quiet for reads and for writes that changed nothing.
 - Affected-row counts exclude read-only statements, so an insert followed by a select is counted once.
-- Cross-tab change notifications now reach .NET (`ISqliteChangeNotifier` on the worker transport).
+- Committed writes - this tab's and other tabs' - reach .NET through `IBlazorSqliteTransport.TablesChanged`; a transport that reports its own writes sets `ReportsLocalWrites` so the connection does not raise them twice.
 - Transactions roll back when disposed without a commit; nested `BeginTransaction` fails with a message pointing at savepoints.
 
 ### Features
@@ -29,6 +29,8 @@
 
 ### Housekeeping
 
+- One `BlazorSqlite` package replaces `BlazorSqlite.Data`, `.Interop`, `.EntityFrameworkCore`, `.Js`, `.Storage.Abstractions`, and `.Storage.InMemory`; the conformance kit moved into `BlazorSqlite.Testing`. Public types carry the `BlazorSqlite` prefix (`IBlazorSqliteTransport`, `BlazorSqliteWorkerTransport`, `BlazorSqliteLiveQuery<T>`, ...), and static assets are served under `_content/BlazorSqlite/`.
+- Browser assets are imported with a version query, so an upgrade never pairs new .NET with JavaScript the browser cached under an earlier release.
 - Package versions bumped to patched 10.0.13 releases; packaging metadata, symbols, and deterministic builds; GitHub Actions CI.
 - Documentation under `docs/`.
 

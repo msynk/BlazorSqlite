@@ -2,15 +2,15 @@
 
 ## Install
 
-Reference `BlazorSqlite.EntityFrameworkCore` (which brings `BlazorSqlite.Interop`, `BlazorSqlite.Data`, and `BlazorSqlite.Js`) plus the storage packages you want. Every storage package is optional; register at least one.
+Reference `BlazorSqlite` - the ADO.NET surface, the EF Core integration, the worker transport, and the in-memory backend in one package - plus the storage packages you want. Every storage package is optional; register at least one.
 
 ```
-dotnet add package BlazorSqlite.EntityFrameworkCore
+dotnet add package BlazorSqlite
 dotnet add package BlazorSqlite.Storage.Opfs
 dotnet add package BlazorSqlite.Storage.IndexedDb
 ```
 
-The engine (`.wasm` and the worker) is served as static web assets under `_content/BlazorSqlite.Js/`. Nothing needs to be added to `index.html`.
+The engine (`.wasm` and the worker) is served as static web assets under `_content/BlazorSqlite/`. Nothing needs to be added to `index.html`.
 
 ## Register
 
@@ -20,13 +20,13 @@ using BlazorSqlite.Storage.InMemory;
 using BlazorSqlite.Storage.Opfs;
 
 builder.Services.AddBlazorSqlite(sqlite => sqlite
-    .AddStorageProvider<OpfsStorageProvider>()
-    .AddStorageProvider<IndexedDbStorageProvider>()
-    .AddStorageProvider<InMemoryStorageProvider>()
+    .AddStorageProvider<BlazorSqliteOpfsStorageProvider>()
+    .AddStorageProvider<BlazorSqliteIndexedDbStorageProvider>()
+    .AddStorageProvider<BlazorSqliteInMemoryStorageProvider>()
     .UseStorage(s => s
-        .Prefer(OpfsStorageProvider.ProviderName)
-        .Fallback(IndexedDbStorageProvider.ProviderName)
-        .Fallback(InMemoryStorageProvider.ProviderName)
+        .Prefer(BlazorSqliteOpfsStorageProvider.ProviderName)
+        .Fallback(BlazorSqliteIndexedDbStorageProvider.ProviderName)
+        .Fallback(BlazorSqliteInMemoryStorageProvider.ProviderName)
         .AllowNonPersistentFallback())
     .AddDatabase("app.db"));
 
@@ -43,8 +43,8 @@ builder.Services.AddBlazorSqliteDbContext<AppDbContext>(options =>
 |---|---|
 | `IBlazorSqliteSessionFactory` | Resolves a backend, starts a worker, opens the database |
 | `BlazorSqliteDatabase` | The one shared session for the database named in `AddDatabase` |
-| `StorageProviderResolver`, `StorageMigrator`, `IStorageBindingStore` | Selection, migration, and the sticky binding (in `localStorage` by default) |
-| `ISqliteTransportFactory` | The worker transport |
+| `BlazorSqliteStorageProviderResolver`, `BlazorSqliteStorageMigrator`, `IBlazorSqliteStorageBindingStore` | Selection, migration, and the sticky binding (in `localStorage` by default) |
+| `IBlazorSqliteTransportFactory` | The worker transport |
 
 Builder options:
 

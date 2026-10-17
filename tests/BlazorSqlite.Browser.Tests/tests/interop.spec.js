@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 /**
  * The exact conversation the .NET transport has with the host: create a host, then drive every
  * operation through `call` so a failure is data rather than a thrown error. These tests pin the
- * envelope shape `SqliteWireFormat.DecodeCall` reads; a change here without a matching change there
+ * envelope shape `BlazorSqliteWireFormat.DecodeCall` reads; a change here without a matching change there
  * is a broken release.
  */
 test.describe('the JS interop envelope', () => {

@@ -32,7 +32,7 @@ public sealed class StorageSelectionBuilderTests
         var selection = BlazorSqliteStorageSelectionBuilder.Create(s => s.Prefer("opfs"));
 
         Assert.False(selection.AllowNonPersistentFallback);
-        Assert.Equal(StorageMigrationMode.KeepExisting, selection.MigrationMode);
+        Assert.Equal(BlazorSqliteStorageMigrationMode.KeepExisting, selection.MigrationMode);
     }
 
     [Fact]
@@ -76,8 +76,8 @@ public sealed class StorageSelectionBuilderTests
     public void MigrationMode_IsCarriedThrough()
     {
         var selection = BlazorSqliteStorageSelectionBuilder.Create(
-            s => s.Prefer("opfs").WithMigrationMode(StorageMigrationMode.AutomaticOnOpen));
+            s => s.Prefer("opfs").WithMigrationMode(BlazorSqliteStorageMigrationMode.AutomaticOnOpen));
 
-        Assert.Equal(StorageMigrationMode.AutomaticOnOpen, selection.MigrationMode);
+        Assert.Equal(BlazorSqliteStorageMigrationMode.AutomaticOnOpen, selection.MigrationMode);
     }
 }

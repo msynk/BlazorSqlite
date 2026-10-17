@@ -23,13 +23,13 @@ public sealed class DependencyInjectionTests
     {
         var services = new ServiceCollection();
         services.AddBlazorSqlite(sqlite => sqlite
-            .AddStorageProvider<InMemoryStorageProvider>()
-            .UseStorage(s => s.Prefer(InMemoryStorageProvider.ProviderName))
-            .UseBindingStore<InMemoryStorageBindingStore>()
+            .AddStorageProvider<BlazorSqliteInMemoryStorageProvider>()
+            .UseStorage(s => s.Prefer(BlazorSqliteInMemoryStorageProvider.ProviderName))
+            .UseBindingStore<BlazorSqliteInMemoryStorageBindingStore>()
             .AddDatabase("di.db"));
 
         // Desktop has no worker; the in-process engine stands in for it.
-        services.AddSingleton<ISqliteTransportFactory>(new InProcessTransportFactory());
+        services.AddSingleton<IBlazorSqliteTransportFactory>(new InProcessTransportFactory());
 
         services.AddBlazorSqliteDbContext<ProductContext>(options =>
         {
@@ -48,7 +48,7 @@ public sealed class DependencyInjectionTests
         await using var provider = Build();
 
         Assert.NotNull(provider.GetRequiredService<IBlazorSqliteSessionFactory>());
-        Assert.NotNull(provider.GetRequiredService<StorageProviderResolver>());
+        Assert.NotNull(provider.GetRequiredService<BlazorSqliteStorageProviderResolver>());
         Assert.NotNull(provider.GetRequiredService<BlazorSqliteStorageSelection>());
         Assert.Equal("di.db", provider.GetRequiredService<BlazorSqliteDatabase>().Name);
         Assert.Single(provider.GetServices<IBlazorSqliteStorageProvider>());
@@ -60,7 +60,7 @@ public sealed class DependencyInjectionTests
         var services = new ServiceCollection();
 
         var error = Assert.Throws<InvalidOperationException>(() =>
-            services.AddBlazorSqlite(sqlite => sqlite.AddStorageProvider<InMemoryStorageProvider>()));
+            services.AddBlazorSqlite(sqlite => sqlite.AddStorageProvider<BlazorSqliteInMemoryStorageProvider>()));
 
         Assert.Contains("UseStorage", error.Message);
     }
@@ -161,8 +161,8 @@ public sealed class DependencyInjectionTests
         Assert.True(database.IsOpen);
     }
 
-    private sealed class InProcessTransportFactory : ISqliteTransportFactory
+    private sealed class InProcessTransportFactory : IBlazorSqliteTransportFactory
     {
-        public ISqliteTransport Create(IBlazorSqliteStorageProvider provider) => new InProcessSqliteTransport();
+        public IBlazorSqliteTransport Create(IBlazorSqliteStorageProvider provider) => new BlazorSqliteInProcessTransport();
     }
 }

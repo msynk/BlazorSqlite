@@ -8,8 +8,8 @@ namespace BlazorSqlite.Storage.Tests;
 /// Runs the contract-layer kit against the IndexedDB provider. Admin tests skip on desktop because
 /// there is no JavaScript runtime - the probe reports unavailable, which is the honest answer.
 /// </summary>
-public sealed class IndexedDbStorageConformanceTests : StorageProviderConformanceTests
+public sealed class IndexedDbStorageConformanceTests : BlazorSqliteStorageProviderConformanceTests
 {
     /// <inheritdoc />
-    protected override IBlazorSqliteStorageProvider CreateProvider() => new IndexedDbStorageProvider();
+    protected override IBlazorSqliteStorageProvider CreateProvider() => new BlazorSqliteIndexedDbStorageProvider();
 }

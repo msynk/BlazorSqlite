@@ -19,7 +19,7 @@ await run('cache')</pre>
   inserts (statement cache), a 1 000-row read on the binary path and on the tagged path, and an
   indexed point read.</p>
   <script type="module">
-    import { open, encodeBatchBinary, decodeReplyBinary } from '/_content/BlazorSqlite.Js/blazor-sqlite-host.js';
+    import { open, encodeBatchBinary, decodeReplyBinary } from '/_content/BlazorSqlite/blazor-sqlite-host.js';
 
     const backends = {
       memory: { requiredBuild: 'synchronous' },

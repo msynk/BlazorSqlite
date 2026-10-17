@@ -11,7 +11,6 @@ import {
   fileNameOf,
   importBesqlIfPresent,
   metaUrl,
-  pageCount,
   pageUrl,
   pathOf,
 } from './cache-vfs.js';
@@ -95,22 +94,18 @@ export async function deleteDatabase(databaseName) {
   const name = requireName(databaseName);
   const cache = await caches.open(CACHE_NAME);
 
-  for (const suffix of ['', ...RELATED_SUFFIXES]) {
-    const path = pathOf(name + suffix);
-    const meta = await cache.match(metaUrl(path));
-    if (!meta) {
-      continue;
-    }
+  // The related files are listed rather than matched by a loose prefix. Every entry for a database
+  // is `<path>/meta` or `<path>/p/<n>`, so the prefix ends in a slash; without it, deleting
+  // `app.db` would also take `app.db2` - a different database - with it.
+  const prefixes = ['', ...RELATED_SUFFIXES]
+    .map(suffix => `/blazor-sqlite/db/${encodeURIComponent(pathOf(name + suffix))}/`);
 
-    const { size } = await meta.json();
-    const deletions = [];
-    for (let index = 0; index < pageCount(size ?? 0); index++) {
-      deletions.push(cache.delete(pageUrl(path, index)));
-    }
-
-    await Promise.all(deletions);
-    await cache.delete(metaUrl(path));
-  }
+  await Promise.all((await cache.keys())
+    .filter(request => {
+      const { pathname } = new URL(request.url);
+      return prefixes.some(prefix => pathname.startsWith(prefix));
+    })
+    .map(request => cache.delete(request)));
 
   try {
     const besql = await caches.open(BESQL_CACHE);

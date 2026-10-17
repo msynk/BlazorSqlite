@@ -17,7 +17,7 @@ public sealed class SharedSampleModelTests
     [Fact]
     public async Task SampleMigrations_ApplyAndRoundTrip()
     {
-        await using var transport = new InProcessSqliteTransport();
+        await using var transport = new BlazorSqliteInProcessTransport();
         await using var connection = new BlazorSqliteConnection(transport, "sample.db");
         await connection.OpenAsync(Ct);
         await using var ctx = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()

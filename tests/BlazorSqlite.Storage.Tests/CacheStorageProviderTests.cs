@@ -8,12 +8,12 @@ public sealed class CacheStorageProviderTests
 {
     [Fact]
     public void Name_IsTheStickyBindingKey()
-        => Assert.Equal("cache-storage", new CacheStorageProvider().Name);
+        => Assert.Equal("cache-storage", new BlazorSqliteCacheStorageProvider().Name);
 
     [Fact]
     public void Capabilities_MatchJournalBasedCacheStorage()
     {
-        var capabilities = new CacheStorageProvider().Capabilities;
+        var capabilities = new BlazorSqliteCacheStorageProvider().Capabilities;
 
         Assert.Equal(BlazorSqliteEngineBuild.AsyncCapable, capabilities.RequiredBuild);
         Assert.True(capabilities.IsPersistent);
@@ -27,7 +27,7 @@ public sealed class CacheStorageProviderTests
     [Fact]
     public async Task Probe_WithoutJavaScript_ReportsUnavailable()
     {
-        var probe = await new CacheStorageProvider().ProbeAsync(TestContext.Current.CancellationToken);
+        var probe = await new BlazorSqliteCacheStorageProvider().ProbeAsync(TestContext.Current.CancellationToken);
 
         Assert.False(probe.IsAvailable);
         Assert.Contains("browser", probe.UnavailableReason, StringComparison.OrdinalIgnoreCase);

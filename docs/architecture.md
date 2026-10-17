@@ -6,8 +6,8 @@ Blazor main thread                       Dedicated worker
 EF Core (stock SQLite provider)
   │
 BlazorSqliteConnection / Command / Batch
-  │  SqliteCommandRequest[]
-WorkerSqliteTransport
+  │  BlazorSqliteCommandRequest[]
+BlazorSqliteWorkerTransport
   │  byte[] (binary wire format)
 blazor-sqlite-host.js  ── postMessage, transferred ──▶  blazor-sqlite-worker.js
   ◀── postMessage, transferred ──                        │ statement cache, update hook
@@ -27,11 +27,11 @@ One worker owns one database. A second `BlazorSqliteDatabase` or a second sessio
 Everything the transport sends or receives is one `byte[]`:
 
 - A **batch** is magic, version, count, then per request the SQL, a result-kind byte, a row limit, and parameters as name, SQLite storage-class tag, and payload.
-- A **reply** is magic, version, status, then either an error (message, result code, name) or one result per request: columns with their storage class, records affected, last insert rowid, rows as tagged cells, and the tables the request changed.
+- A **reply** is magic, version, status, then either an error (message, result code, name) or one result per request: columns with their storage class, records affected, last insert rowid, and rows as tagged cells.
 
 Integers are eight bytes, doubles eight bytes, strings and blobs length-prefixed. Blazor marshals byte arrays across JS interop without JSON or base64, the host transfers the buffer to the worker instead of cloning it, and the worker writes rows straight from `sqlite3_column_*` into the reply buffer with no intermediate object graph. A failure is a reply with an error status, so the SQLite result code survives the boundary and becomes a typed exception.
 
-`SqliteWireFormat` (C#) and `blazor-sqlite-wire.js` are the two halves; the format version is checked on every reply, and a mismatch names the packages that must be the same release.
+`BlazorSqliteWireFormat` (C#) and `blazor-sqlite-wire.js` are the two halves; the format version is checked on every reply. The host module, the worker, and every module they import are loaded with the assembly's version in the query string, so a browser cannot pair new .NET with JavaScript it cached under an earlier release - and if something else serves a stale copy anyway, the version check says so.
 
 JavaScript callers get the same information in a structured-clone-friendly tagged shape (`{ t: [...], v: [...] }` rows) through `host.execute`.
 
@@ -41,7 +41,7 @@ The worker keeps up to 64 prepared statements keyed by SQL text, lent out and re
 
 ## Change tracking
 
-`sqlite3_update_hook` names every table a row changed in, through triggers and cascades. The worker collects those per request, puts them in the reply, and broadcasts them to other tabs. Affected-row counts honour `sqlite3_stmt_readonly`, so an `INSERT` followed by a `SELECT` reports the insert once - the rule Microsoft.Data.Sqlite applies.
+`sqlite3_update_hook` names every table a row changed in, through triggers and cascades; the statement text covers DDL and truncating deletes, which the hook does not see. `sqlite3_commit_hook` says when those rows became visible. The worker accumulates tables until the connection is back in autocommit and then notifies - this tab's .NET transport and, over a `BroadcastChannel`, every other tab - only if a commit happened. See [Live queries](live-queries.md#how-changes-are-detected). Affected-row counts honour `sqlite3_stmt_readonly`, so an `INSERT` followed by a `SELECT` reports the insert once - the rule Microsoft.Data.Sqlite applies.
 
 ## Open-time configuration
 

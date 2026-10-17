@@ -24,7 +24,7 @@ builder.Services.AddBlazorSqlite(sqlite => sqlite
 modelBuilder.HasDbFunction(() => Sql.Slugify(default!)).HasName("slugify");
 ```
 
-The module receives the Emscripten `module`, the wa-sqlite `sqlite3` API, the open `db` handle, and the database name - the same handles the built-in `ef_*` set uses (`blazor-sqlite-functions.js` is a worked example, including aggregates and a collation). The URL must be importable from the worker: root-relative paths such as `/my-functions.js` or `/_content/MyPackage/functions.js`.
+The module receives the Emscripten `module`, the wa-sqlite `sqlite3` API, the open `db` handle, and the database name - the same handles the built-in `ef_*` set uses (`blazor-sqlite-functions.js` is a worked example, including aggregates and a collation). A relative URL is resolved against the document, as every other Blazor asset is, so `./my-functions.js` and `./_content/MyPackage/functions.js` work under a sub-path too.
 
 Functions cannot call back into .NET: the worker has no access to the Blazor runtime, and a synchronous SQL callback could not await it if it did.
 
@@ -39,13 +39,12 @@ These run after the provider's own statements and after `PRAGMA foreign_keys`, o
 
 ## A custom transport
 
-`ISqliteTransport` is the seam between the ADO.NET layer and wherever the engine runs. `BlazorSqlite.Testing.InProcessSqliteTransport` runs Microsoft.Data.Sqlite in-process for desktop tests; `WorkerSqliteTransport` drives the worker. A transport that can also:
+`IBlazorSqliteTransport` is the seam between the ADO.NET layer and wherever the engine runs. `BlazorSqlite.Testing.BlazorSqliteInProcessTransport` runs Microsoft.Data.Sqlite in-process for desktop tests; `BlazorSqliteWorkerTransport` drives the worker. A transport that can also:
 
-- report what it wrote - set `SqliteCommandResult.ChangedTables`; otherwise the connection infers tables from the SQL;
-- hear other writers - implement `ISqliteChangeNotifier`;
-- snapshot an open database - implement `ISqliteSnapshotSource`.
+- report committed writes - raise `TablesChanged` once a write commits, for its own writes and other writers' alike, and return `true` from `ReportsLocalWrites`; otherwise leave both at their defaults and the connection infers tables from the SQL;
+- snapshot an open database - implement `IBlazorSqliteSnapshotSource`.
 
-Register it through `ISqliteTransportFactory` to replace the worker for every session, which is how the EF test suite runs the whole composition on desktop .NET.
+Register it through `IBlazorSqliteTransportFactory` to replace the worker for every session, which is how the EF test suite runs the whole composition on desktop .NET.
 
 ## A custom storage backend
 

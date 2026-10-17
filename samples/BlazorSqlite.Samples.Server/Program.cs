@@ -17,7 +17,24 @@ await using (var scope = app.Services.CreateAsyncScope())
 }
 
 app.UseBlazorFrameworkFiles();
-app.UseStaticFiles();
+
+if (app.Environment.IsDevelopment())
+{
+    // The framework files are served no-cache, but the RCL's `_content` assets - the SQLite host
+    // and worker modules - go out with only an ETag. Chrome's heuristic caching can then hand a
+    // reloaded page a module older than the assembly calling into it, which surfaces as a missing
+    // export ("the value 'listen' is not a function") rather than as a version mismatch. Force a
+    // revalidation so the JavaScript half is never a rebuild behind the .NET half.
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        OnPrepareResponse = context =>
+            context.Context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate",
+    });
+}
+else
+{
+    app.UseStaticFiles();
+}
 
 app.MapGet("/api/products", async (AppDbContext db, CancellationToken ct) =>
     await db.Products.AsNoTracking().OrderBy(p => p.Id).ToListAsync(ct));

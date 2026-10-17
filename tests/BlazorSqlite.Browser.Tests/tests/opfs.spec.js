@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { exec, executeExpectingFailure, openHost, query } from './host.js';
+import { exec, executeExpectingFailure, openHost, query, skipUnlessOpfs } from './host.js';
 
 const OPFS_VFS = {
   moduleUrl: '/_content/BlazorSqlite.Storage.Opfs/opfs-vfs.js',
@@ -10,6 +10,9 @@ const OPFS_LIMITS = {
   supportsMultiDatabaseTransactions: false,
   canChangePageSize: true,
 };
+
+// Every test here needs OPFS, including the multi-tab ones that open their own pages.
+test.beforeEach(({ page }) => skipUnlessOpfs(page));
 
 test.describe('OPFS persistence', () => {
   test('survives a worker restart', async ({ page }) => {
@@ -142,6 +145,30 @@ test.describe('OPFS multi-tab', () => {
       await context.close();
     }
   });
+});
+
+/**
+ * The harder order: the reader opened while the file was still empty and has to notice, at each
+ * read transaction, that the other tab grew it.
+ */
+test('a tab that opened first sees a write that grew the file', async ({ browser }) => {
+  const databaseName = uniqueName('grow');
+  const context = await browser.newContext();
+  const reader = await context.newPage();
+  const writer = await context.newPage();
+
+  try {
+    await openOpfs(reader, databaseName);
+    expect((await query(reader, "SELECT name FROM sqlite_master WHERE type = 'table'")).rows).toEqual([]);
+
+    await openOpfs(writer, databaseName);
+    await exec(writer, 'CREATE TABLE product (id INTEGER PRIMARY KEY, name TEXT)');
+    await exec(writer, "INSERT INTO product (name) VALUES ('Grown')");
+
+    expect((await query(reader, 'SELECT name FROM product')).rows).toEqual([['Grown']]);
+  } finally {
+    await context.close();
+  }
 });
 
 function uniqueName(label) {
