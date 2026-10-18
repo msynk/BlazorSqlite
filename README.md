@@ -1,3 +1,5 @@
+**Note**: moved to bitplatform (https://bsqlite.bitplatform.dev)
+
 # BlazorSqlite
 
 SQLite in the browser for Blazor WebAssembly, with EF Core on top. The same entities and migrations run on the client as on the server. Storage is a public contract with four first-party backends: OPFS, IndexedDB, Cache Storage, and in-memory.
